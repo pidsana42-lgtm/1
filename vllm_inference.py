@@ -5,7 +5,7 @@ from pathlib import Path
 from PIL import Image
 from pdf2image import convert_from_path
 from transformers import AutoProcessor, Gemma4ForConditionalGeneration
-from datasets import Dataset, Features, Value
+from datasets import Dataset, Features, Value, Image as HFImage
 
 # --- Configuration ---
 MODEL_ID = "google/gemma-4-31b-it"
@@ -130,9 +130,17 @@ def push_to_hf():
             for line in f:
                 try:
                     entry = json.loads(line)
+                    img_path = entry.get("image_path")
+                    img_obj = None
+                    if img_path and os.path.exists(img_path):
+                        try:
+                            img_obj = Image.open(img_path).convert("RGB")
+                        except Exception as e:
+                            print(f"    ⚠️ Warning: Could not open image {img_path}: {e}")
                     all_data.append({
                         "source": entry["source"],
                         "page": entry["page"],
+                        "image": img_obj,
                         "text": entry.get("text", ""),
                         "caption": entry.get("caption", ""),
                     })
@@ -146,6 +154,7 @@ def push_to_hf():
     features = Features({
         "source": Value("string"),
         "page": Value("int32"),
+        "image": HFImage(),
         "text": Value("string"),
         "caption": Value("string"),
     })

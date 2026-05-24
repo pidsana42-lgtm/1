@@ -21,10 +21,11 @@ def push_to_huggingface():
                 try:
                     entry = json.loads(line)
                     all_data.append({
-                        "image": entry["image_path"],
-                        "text": entry["content"],
                         "source": entry["source"],
-                        "page": entry["page"]
+                        "page": entry["page"],
+                        "image": entry.get("image_path"),
+                        "text": entry.get("text", ""),
+                        "caption": entry.get("caption", "")
                     })
                 except: continue
 
@@ -32,12 +33,13 @@ def push_to_huggingface():
         print("❌ No data found to push.")
         return
 
-    # กำหนดโครงสร้าง Dataset (DSAPA Style: Image + Text)
+    # กำหนดโครงสร้าง Dataset (5 คอลัมน์)
     features = Features({
-        "image": Image(), # จะเก็บภาพจริงๆ ขึ้นไปบน HF ไม่ใช่แค่ Path
-        "text": Value("string"),
         "source": Value("string"),
-        "page": Value("int32")
+        "page": Value("int32"),
+        "image": Image(),
+        "text": Value("string"),
+        "caption": Value("string")
     })
 
     print(f"🚀 Creating Dataset with {len(all_data)} samples...")
