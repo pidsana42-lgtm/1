@@ -1,0 +1,14 @@
+# Local data and assets
+input/
+output_data/
+temp_pages/
+hf/
+
+# Python environment and cache
+__pycache__/
+*.pyc
+.env
+.DS_Store
+
+# Temporary files
+*.tmp
