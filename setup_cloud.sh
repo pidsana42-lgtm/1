@@ -6,7 +6,7 @@ sudo apt-get install -y poppler-utils 2>/dev/null || conda install -c conda-forg
 
 echo "📦 Installing Python dependencies..."
 pip install --upgrade pip
-pip install "numpy<2.0.0" vllm openai pdf2image datasets huggingface_hub hf_transfer
+pip install "numpy<2.0.0" transformers accelerate pdf2image datasets huggingface_hub hf_transfer Pillow
 
 echo "📂 Creating directories..."
 mkdir -p input output_data temp_pages
@@ -18,6 +18,7 @@ else
     echo "⚠️ HF_TOKEN not set, skipping PDF download."
 fi
 
+echo ""
 echo "✅ Ready! Run:"
-echo "  Terminal 1: bash start_vllm.sh"
-echo "  Terminal 2: python3 vllm_inference.py"
+echo "  export HF_TOKEN=hf_xxxx"
+echo "  python3 vllm_inference.py"
