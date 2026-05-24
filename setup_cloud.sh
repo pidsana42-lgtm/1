@@ -3,6 +3,7 @@
 
 echo "🚀 Installing stable dependencies for H100..."
 pip install --upgrade pip
+pip install "numpy<2.0.0"
 pip install vllm openai pdf2image datasets huggingface_hub
 
 echo "📂 Creating directories..."
