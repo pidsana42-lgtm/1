@@ -13,7 +13,7 @@ MODEL_ID = "google/gemma-4-31b-it"
 INPUT_DIR = "input"
 OUTPUT_DIR = "output_data"
 TEMP_IMAGE_DIR = "temp_pages"
-BATCH_SIZE = 8  # จำนวนหน้าที่ประมวลผลพร้อมกัน (ปรับตาม VRAM)
+BATCH_SIZE = 6  # จำนวนหน้าที่ประมวลผลพร้อมกัน (ปรับตาม VRAM)
 
 # --- Hugging Face Configuration ---
 HF_REPO_ID = "Phonsiri/astrology-dataset"
