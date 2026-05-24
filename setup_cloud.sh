@@ -6,7 +6,7 @@ sudo apt-get install -y poppler-utils 2>/dev/null || conda install -c conda-forg
 
 echo "📦 Installing Python dependencies..."
 pip install --upgrade pip
-pip install "numpy<2.0.0" transformers accelerate pdf2image datasets huggingface_hub hf_transfer Pillow
+pip install "numpy<2.0.0" transformers accelerate pdf2image datasets huggingface_hub hf_transfer Pillow torchvision
 
 echo "📂 Creating directories..."
 mkdir -p input output_data temp_pages
