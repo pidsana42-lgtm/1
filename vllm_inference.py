@@ -28,14 +28,8 @@ model = Gemma4ForConditionalGeneration.from_pretrained(
 processor = AutoProcessor.from_pretrained(MODEL_ID, token=HF_TOKEN)
 print("✅ Model loaded!")
 
-def process_page(image_path, page_num):
-    image = Image.open(image_path).convert("RGB")
-
-    prompt = f"""ถอดข้อมูลจากภาพหน้าโหราศาสตร์หน้าที่ {page_num}:
-1. ข้อความภาษาไทยทั้งหมด (Markdown)
-2. อธิบายภาพดวงชาตา/ตารางดาว อย่างละเอียด
-3. ตอบเฉพาะเนื้อหาเท่านั้น"""
-
+def run_inference(image, prompt):
+    """รัน inference 1 ครั้ง คืนค่า string"""
     messages = [
         {
             "role": "user",
@@ -45,29 +39,51 @@ def process_page(image_path, page_num):
             ],
         }
     ]
+    inputs = processor.apply_chat_template(
+        messages,
+        add_generation_prompt=True,
+        tokenize=True,
+        return_dict=True,
+        return_tensors="pt",
+    ).to(model.device, dtype=torch.bfloat16)
+
+    with torch.inference_mode():
+        outputs = model.generate(
+            **inputs,
+            max_new_tokens=2048,
+            do_sample=False,
+        )
+
+    return processor.decode(
+        outputs[0][inputs["input_ids"].shape[-1]:],
+        skip_special_tokens=True
+    ).strip()
+
+
+def process_page(image_path, page_num):
+    image = Image.open(image_path).convert("RGB")
+
+    # --- Task 1: แกะข้อความ (OCR) ---
+    ocr_prompt = (
+        f"ถอดข้อความทั้งหมดจากภาพหน้าโหราศาสตร์หน้าที่ {page_num} "
+        f"ให้ครบถ้วนทุกตัวอักษร ทั้งภาษาไทยและภาษาอื่นๆ "
+        f"จัดรูปแบบเป็น Markdown ตอบเฉพาะข้อความเท่านั้น ห้ามอธิบายเพิ่ม"
+    )
+
+    # --- Task 2: บรรยายภาพ (Image Caption) ---
+    caption_prompt = (
+        f"บรรยายภาพในหน้าโหราศาสตร์หน้าที่ {page_num} อย่างละเอียด "
+        f"เช่น ดวงชาตา ตารางดาว สัญลักษณ์ทางโหราศาสตร์ ตาราง หรือภาพประกอบใดๆ "
+        f"อธิบายตำแหน่ง สี รูปร่าง และความหมายที่มองเห็น ตอบเป็นภาษาไทย"
+    )
 
     try:
-        inputs = processor.apply_chat_template(
-            messages,
-            add_generation_prompt=True,
-            tokenize=True,
-            return_dict=True,
-            return_tensors="pt",
-        ).to(model.device, dtype=torch.bfloat16)
-
-        with torch.inference_mode():
-            outputs = model.generate(
-                **inputs,
-                max_new_tokens=2048,
-                do_sample=False,
-            )
-
-        response = processor.decode(
-            outputs[0][inputs["input_ids"].shape[-1]:],
-            skip_special_tokens=True
-        )
-        return response.strip()
-
+        print(f"    📝 OCR...", end=" ", flush=True)
+        text_content = run_inference(image, ocr_prompt)
+        print(f"✅  🖼️  Caption...", end=" ", flush=True)
+        image_caption = run_inference(image, caption_prompt)
+        print(f"✅")
+        return {"text": text_content, "caption": image_caption}
     except Exception as e:
         print(f"  ❌ Error on page {page_num}: {e}")
         return None
@@ -86,9 +102,10 @@ def push_to_hf():
                 try:
                     entry = json.loads(line)
                     all_data.append({
-                        "text": entry["content"],
                         "source": entry["source"],
                         "page": entry["page"],
+                        "text": entry.get("text", ""),
+                        "caption": entry.get("caption", ""),
                     })
                 except:
                     continue
@@ -98,9 +115,10 @@ def push_to_hf():
         return
 
     features = Features({
-        "text": Value("string"),
         "source": Value("string"),
         "page": Value("int32"),
+        "text": Value("string"),
+        "caption": Value("string"),
     })
 
     dataset = Dataset.from_list(all_data, features=features)
@@ -152,22 +170,22 @@ def main():
                 img_path = images_dir / f"page_{page_num:03d}.jpg"
                 page.save(img_path, "JPEG", quality=85)
 
-                print(f"  🔍 Page {page_num}/{total}...", end=" ", flush=True)
-                content = process_page(img_path, page_num)
+                print(f"  🔍 Page {page_num}/{total}")
+                result = process_page(img_path, page_num)
 
-                if content:
+                if result:
                     row = {
                         "source": pdf_path.name,
                         "page": page_num,
                         "image_path": str(img_path),
-                        "content": content,
+                        "text": result["text"],
+                        "caption": result["caption"],
                     }
                     f_jsonl.write(json.dumps(row, ensure_ascii=False) + "\n")
                     f_jsonl.flush()
                     new_pages += 1
-                    print(f"✅ Saved")
                 else:
-                    print(f"❌ Skipped")
+                    print(f"  ❌ Page {page_num} skipped")
 
         if new_pages > 0:
             print(f"\n📤 Pushing {new_pages} new pages to HF...")
