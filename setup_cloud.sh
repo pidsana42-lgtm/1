@@ -11,7 +11,7 @@ mkdir -p input output_data temp_pages
 echo "📥 Downloading raw PDFs from Hugging Face..."
 # ดึงไฟล์ PDF ทั้งหมดจาก Repo มาไว้ที่ input/
 if [ -n "$HF_TOKEN" ]; then
-    huggingface-cli download Phonsiri/astrology-raw-pdfs --repo-type dataset --local-dir input/ --local-dir-use-symlinks False
+    python3 download_pdfs.py
 else
     echo "⚠️ HF_TOKEN not set, skipping PDF download."
 fi
