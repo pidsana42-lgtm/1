@@ -5,7 +5,8 @@ from pathlib import Path
 from PIL import Image
 from pdf2image import convert_from_path
 from transformers import AutoProcessor, Gemma4ForConditionalGeneration
-from datasets import Dataset, Features, Value, Image as HFImage
+from datasets import Dataset, Features, Value, Image as HFImage, load_dataset
+
 
 # --- Configuration ---
 MODEL_ID = "google/gemma-4-31b-it"
@@ -164,10 +165,71 @@ def push_to_hf():
     print(f"  ✅ Pushed {len(all_data)} samples to {HF_REPO_ID}")
 
 
+def sync_from_hf():
+    if not HF_TOKEN:
+        print("  ℹ️ HF_TOKEN not set, skipping HF sync.")
+        return
+
+    try:
+        print(f"📥 Checking Hugging Face Dataset '{HF_REPO_ID}' to sync progress...")
+        dataset = load_dataset(HF_REPO_ID, split="train", token=HF_TOKEN)
+        print(f"✅ Found {len(dataset)} existing records on Hugging Face.")
+        
+        synced_count = 0
+        for row in dataset:
+            source = row["source"]
+            page = int(row["page"])
+            clean_name = Path(source).stem.replace(" ", "_")
+            
+            pdf_output_dir = Path(OUTPUT_DIR) / clean_name
+            images_dir = pdf_output_dir / "images"
+            images_dir.mkdir(parents=True, exist_ok=True)
+            jsonl_path = pdf_output_dir / f"{clean_name}.jsonl"
+            
+            existing_pages = set()
+            if jsonl_path.exists():
+                with open(jsonl_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        try:
+                            existing_pages.add(json.loads(line).get("page", 0))
+                        except:
+                            pass
+            
+            if page not in existing_pages:
+                img_path = images_dir / f"page_{page:03d}.jpg"
+                if row.get("image") is not None:
+                    try:
+                        row["image"].save(img_path, "JPEG", quality=85)
+                    except Exception as e:
+                        print(f"    ⚠️ Warning: Could not save image for page {page}: {e}")
+                
+                local_row = {
+                    "source": source,
+                    "page": page,
+                    "image_path": str(img_path),
+                    "text": row.get("text", ""),
+                    "caption": row.get("caption", ""),
+                }
+                with open(jsonl_path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(local_row, ensure_ascii=False) + "\n")
+                synced_count += 1
+                
+        if synced_count > 0:
+            print(f"🎉 Synced {synced_count} records and images from Hugging Face successfully!")
+        else:
+            print("👍 Local data is already fully synced with Hugging Face.")
+            
+    except Exception as e:
+        print(f"ℹ️ Hugging Face dataset sync skipped or not found (It's okay if this is the first run): {e}")
+
+
 def main():
     Path(INPUT_DIR).mkdir(exist_ok=True)
     Path(OUTPUT_DIR).mkdir(exist_ok=True)
     Path(TEMP_IMAGE_DIR).mkdir(exist_ok=True)
+
+    # Sync กับ HF ก่อนเพื่อทำต่อแบบไร้รอยต่อ
+    sync_from_hf()
 
     pdf_files = sorted(Path(INPUT_DIR).glob("*.pdf"))
     if not pdf_files:
