@@ -1,77 +1,75 @@
-# Astrology PDF to Markdown & JSONL Extractor (Gemma-4 Vision)
+# Astrology PDF OCR & Dataset Pipeline (H100 + vLLM Optimized)
 
-เครื่องมืออัตโนมัติสำหรับสกัดข้อความภาษาไทยและ "ภาพดวงชาตา" จากไฟล์ PDF หนังสือโหราศาสตร์ ให้ออกมาเป็นรูปแบบ **Markdown** และ **JSONL** เพื่อเตรียมข้อมูลสำหรับกระบวนการ Continuous Pre-Training (CPT) หรือ Fine-tuning AI แบบ Multimodal
-
-ขับเคลื่อนขุมพลังโดย **Gemma 4 31B (Multimodal)** ผ่าน Google GenAI API
+โปรเจกต์สำหรับดึงข้อมูลข้อความและภาพดวงชาตาจากไฟล์ PDF โหราศาสตร์ เพื่อสร้าง Dataset สำหรับเทรน AI (CPT/Fine-tuning) บนระบบ Cloud (H100) โดยใช้ **Gemma 4 31B**
 
 ---
 
-## 🌟 จุดเด่นของระบบ (Features)
+## 🔄 Data Pipeline Flow
 
-1. **Multimodal Extraction**: AI สามารถ "มองเห็น" และอธิบายรายละเอียดของภาพดวงชาตา หรือตารางดวงดาว ออกมาเป็นตัวอักษรได้
-2. **Dual Output Format**:
-   - **Markdown (.md)**: สำหรับอ่านและตรวจสอบความถูกต้อง มีภาพประกอบคู่กับข้อความ
-   - **JSONL (.jsonl)**: สำหรับเทรน AI มีข้อมูลโครงสร้าง (`source`, `page`, `content`) และ **Base64 Image Data**
-3. **Resume Capability (รันต่อจากเดิม)**: ระบบจะเช็คไฟล์เดิมอัตโนมัติ หากรันค้างไว้จะข้ามหน้าที่เสร็จแล้วและเริ่มงานต่อจากจุดล่าสุดทันที
-4. **Incremental Saving (เซฟเก็บแบต)**: บันทึกข้อมูลลงดิสก์ทันทีที่ประมวลผลเสร็จในแต่ละหน้า ทั้ง MD และ JSONL
-5. **Auto-Recovery**: ระบบต้านทาน Server Error (500) และ Quota Limit (429) แบบ Exponential Backoff
-6. **Rate Limiting**: ควบคุมความเร็วที่ **15 RPM** (หน่วงเวลา 5 วินาทีต่อหน้า) เพื่อความเสถียรสูงสุดตามโควตา API
+1.  **Local**: ส่งไฟล์ PDF จากเครื่องขึ้นไปพักที่ Hugging Face (Raw Storage)
+2.  **Cloud (H100)**: ดึงไฟล์ลงมาประมวลผลผ่าน vLLM Server (High Speed)
+3.  **Hugging Face**: ส่ง Dataset ที่แกะเสร็จแล้ว (Text + Image) กลับขึ้นไปที่ HF (User: Phonsiri)
 
 ---
 
-## 📋 สิ่งที่ต้องเตรียม (Prerequisites)
+## 🛠️ สคริปต์ที่สำคัญ (Key Scripts)
 
-- Python 3.8+
-- [Tesseract OCR](https://github.com/tesseract-ocr/tesseract)
-- [Poppler](https://poppler.freedesktop.org/)
-- Google AI Studio API Key (Gemma-4 Access)
-
----
-
-## ⚙️ การติดตั้ง (Installation)
-
-1. **ติดตั้ง Dependencies ระดับ OS:**
-   ```bash
-   brew install tesseract poppler
-   ```
-
-2. **ติดตั้ง Python Libraries:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. **ตั้งค่า API Key:**
-   ใส่คีย์ในไฟล์ `gemini_ocr.py`:
-   ```python
-   API_KEY = "YOUR_API_KEY_HERE"
-   ```
+- `push_pdfs_to_hf.py`: (รันที่เครื่องเรา) ส่งไฟล์ PDF ในโฟลเดอร์ `hf/` ขึ้น Hugging Face
+- `setup_cloud.sh`: (รันบน Cloud) ติดตั้ง Library และดึง PDF ต้นฉบับลงมาเครื่อง GPU
+- `vllm_inference.py`: (รันบน Cloud) เชื่อมต่อ vLLM เพื่อแกะข้อมูลทีละหน้า และเซฟเป็น JSONL + Images
+- `push_to_hf.py`: (รันบน Cloud) รวบรวมข้อมูลทั้งหมดพุชขึ้น Hugging Face Dataset
 
 ---
 
-## 🚀 วิธีใช้งาน (Usage)
+## 🚀 ขั้นตอนการติดตั้งและรันบน Cloud (H100)
 
-1. วางไฟล์ PDF ในโฟลเดอร์ **`input/`**
-2. รันสคริปต์:
-   ```bash
-   python3 gemini_ocr.py
-   ```
-3. หากโปรแกรมหยุดทำงาน สามารถรันคำสั่งเดิมซ้ำเพื่อ **ทำงานต่อ (Resume)** ได้ทันที
-4. ตรวจสอบผลลัพธ์ในโฟลเดอร์ **`output_data/[ชื่อไฟล์]/`**
+### 1. เตรียมเครื่องและข้อมูล
+```bash
+# Clone โค้ด
+git clone https://github.com/pidsana42-lgtm/1.git
+cd 1
+
+# ตั้งค่า Token
+export HF_TOKEN="your_huggingface_token"
+
+# รัน Setup (ติดตั้ง Libs + ดึง PDF ลงมา)
+bash setup_cloud.sh
+```
+
+### 2. รัน vLLM Server (Terminal 1)
+ปรับแต่งมาเพื่อ H100 โดยใช้ **SDPA Backend** เพื่อความเสถียรสูงสุด:
+```bash
+export VLLM_ATTENTION_BACKEND=SDPA
+vllm serve google/gemma-4-31b-it \
+  --limit-mm-per-prompt image=1 \
+  --max-model-len 8192 \
+  --dtype bfloat16 \
+  --device cuda
+```
+
+### 3. เริ่มประมวลผล (Terminal 2)
+```bash
+# เริ่มแกะข้อมูล (มีระบบ Resume รันต่อจากเดิมอัตโนมัติ)
+python3 vllm_inference.py
+
+# ส่ง Dataset ขึ้น Hugging Face (User: Phonsiri)
+python3 push_to_hf.py
+```
 
 ---
 
-## 📁 โครงสร้างข้อมูล (Data Structure)
-
-ในโฟลเดอร์ผลลัพธ์จะประกอบด้วย:
-- `images/`: ภาพหน้าหนังสือแยกแต่ละหน้า (.jpg)
-- `[ชื่อไฟล์].md`: เนื้อหา Markdown พร้อมภาพประกอบ
-- `[ชื่อไฟล์].jsonl`: ข้อมูลสำหรับเทรน AI (ประกอบด้วยข้อความและภาพ Base64)
+## 🌟 ฟีเจอร์เด่น
+- **SDPA Optimized**: ใช้ Scaled Dot Product Attention เพื่อประสิทธิภาพสูงสุดบน H100
+- **Resume Ability**: รันต่อจากหน้าที่ค้างไว้ได้ทันที ไม่ต้องเริ่มใหม่
+- **Multimodal Dataset**: เก็บทั้งข้อความ Markdown และภาพต้นฉบับ (Base64/Image Type)
+- **Automatic Sync**: เชื่อมต่อกับ Hugging Face Hub ทั้งขาเข้าและขาออก
 
 ---
 
-## ⚠️ การแก้ไขปัญหา (Troubleshooting)
+## 📁 โครงสร้างโฟลเดอร์
+- `input/`: ไฟล์ PDF ต้นฉบับที่ดึงมาจาก HF
+- `output_data/`: ผลลัพธ์ที่แกะเสร็จแล้ว แยกตามชื่อไฟล์ PDF
+- `temp_pages/`: ไฟล์ภาพชั่วคราวระหว่างประมวลผล
 
-- **Error 500:** ระบบจะรอและลองใหม่โดยอัตโนมัติ ไม่ต้องปิดโปรแกรม
-- **Error 429:** ระบบจะหยุดพัก 30 วินาทีแล้วทำงานต่อเอง
-- **ต้องการเริ่มใหม่ทั้งหมด:** ให้ลบโฟลเดอร์ใน `output_data/` ของไฟล์นั้นทิ้ง ระบบจะเริ่มนับ 1 ใหม่ให้เอง
-# 1
+---
+*Developed for Advanced Astrology AI Dataset Construction.*
