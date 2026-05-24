@@ -16,8 +16,8 @@ else
     echo "⚠️ HF_TOKEN not set, skipping PDF download."
 fi
 
-echo "🖥️  To start vLLM server on H100 with SDPA, run:"
-echo "export VLLM_ATTENTION_BACKEND=SDPA"
-echo "vllm serve google/gemma-4-31b-it --limit-mm-per-prompt image=1 --max-model-len 4096 --dtype bfloat16"
+echo "🖥️  To start vLLM server on H100 with TORCH_SDPA, run:"
+echo "export VLLM_ATTENTION_BACKEND=TORCH_SDPA"
+echo "vllm serve google/gemma-4-31b-it --limit-mm-per-prompt image=1 --max-model-len 8192 --dtype bfloat16"
 
 echo "✅ Ready! (H100 + SDPA Optimized)"
