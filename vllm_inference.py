@@ -71,7 +71,7 @@ def run_batch(image_prompt_pairs):
             tokenize=False,
         )
         texts.append(text)
-        images.append(image)
+        images.append([image])
 
     inputs = processor(
         images=images,
