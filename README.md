@@ -1,23 +1,39 @@
-# Astrology PDF OCR & Dataset Pipeline (H100 + vLLM)
+# Astrology PDF OCR & Dataset Pipeline (H100 + Transformers)
 
-โปรเจกต์สำหรับดึงข้อมูลข้อความและภาพดวงชาตาจากไฟล์ PDF โหราศาสตร์ เพื่อสร้าง Dataset สำหรับเทรน AI (CPT/Fine-tuning) บนระบบ Cloud (H100) โดยใช้ **Gemma 4 31B**
+โปรเจกต์สำหรับดึงข้อมูลข้อความและภาพดวงชาตาจากไฟล์ PDF โหราศาสตร์ เพื่อสร้าง Dataset สำหรับเทรน AI (CPT/Fine-tuning) บนระบบ Cloud (H100) โดยใช้ **Gemma 4 31B** ผ่าน Hugging Face Transformers โดยตรง
 
 ---
 
 ## 🔄 Data Pipeline Flow
 
-1. **Cloud (H100)**: รัน vLLM Server + ประมวลผล PDF ที่มีอยู่บนเครื่อง
-2. **Hugging Face**: ส่ง Dataset ที่แกะเสร็จแล้ว (Text + Image) ขึ้น HF (User: Phonsiri)
+1. **Cloud (H100)**: โหลดโมเดล Gemma 4 31B → ประมวลผล PDF ทีละหน้า
+2. **Hugging Face**: ส่ง Dataset ที่แกะเสร็จแล้วขึ้น HF (User: Phonsiri)
+
+---
+
+## 📊 โครงสร้าง Dataset
+
+แต่ละ row มี **4 คอลัมน์** แยกชัดเจน:
+
+| คอลัมน์ | ประเภท | คำอธิบาย |
+|---|---|---|
+| `source` | string | ชื่อไฟล์ PDF ต้นฉบับ |
+| `page` | int | หมายเลขหน้า |
+| `text` | string | ข้อความ OCR ทั้งหมดจากหน้านั้น (Markdown) |
+| `caption` | string | คำบรรยายภาพ/ดวงชาตา/ตารางดาวในหน้านั้น |
+
+> แต่ละหน้า PDF จะ inference **2 ครั้ง**: ครั้งที่ 1 สำหรับ OCR, ครั้งที่ 2 สำหรับบรรยายภาพ
 
 ---
 
 ## 🛠️ สคริปต์ที่สำคัญ (Key Scripts)
 
-- `start_vllm.sh`: รัน vLLM Server (Gemma 4 31B) บน GPU
-- `setup_cloud.sh`: ติดตั้ง dependencies ทั้งหมด (รันครั้งแรกครั้งเดียว)
-- `vllm_inference.py`: แกะข้อมูลจาก PDF ทีละหน้าผ่าน vLLM → เซฟเป็น JSONL + Images
-- `push_to_hf.py`: รวบรวมข้อมูลทั้งหมดพุชขึ้น Hugging Face Dataset
-- `download_pdfs.py`: ดึง PDF ต้นฉบับจาก Hugging Face ลงมาที่ `input/`
+| ไฟล์ | ทำอะไร |
+|---|---|
+| `vllm_inference.py` | โหลด Gemma 4 แล้วแกะข้อมูลจาก PDF → JSONL (OCR + Caption) |
+| `setup_cloud.sh` | ติดตั้ง dependencies (รันครั้งแรกครั้งเดียว) |
+| `push_to_hf.py` | รวบรวมข้อมูลและพุชขึ้น Hugging Face Dataset |
+| `download_pdfs.py` | ดึง PDF ต้นฉบับจาก Hugging Face ลงมาที่ `input/` |
 
 ---
 
@@ -32,7 +48,7 @@ export HF_TOKEN="hf_xxxxxxxxxxxxxxxxxxxx"
 # ติดตั้ง system deps (poppler จำเป็นสำหรับ pdf2image)
 sudo apt-get install -y poppler-utils
 
-# ติดตั้ง Python libs
+# ติดตั้ง Python libs + โหลด PDF
 bash setup_cloud.sh
 ```
 
@@ -45,50 +61,47 @@ mv /path/to/your/pdfs/*.pdf input/
 python3 download_pdfs.py
 ```
 
-### 3. รัน vLLM Server (Terminal 1)
-```bash
-bash start_vllm.sh
-```
-รอจน server พร้อม (เห็น `Uvicorn running on...`)
-
-### 4. รันประมวลผล (Terminal 2)
+### 3. รันประมวลผล (Terminal เดียว ไม่ต้องรัน server!)
 ```bash
 export HF_TOKEN="hf_xxxxxxxxxxxxxxxxxxxx"
-
-# แกะข้อมูลจาก PDF (มีระบบ Resume รันต่อจากเดิมอัตโนมัติ)
 python3 vllm_inference.py
-
-# พุช Dataset ขึ้น Hugging Face
-python3 push_to_hf.py
 ```
 
-### 5. ครั้งถัดไป (ไม่ต้อง setup ใหม่)
+ระบบจะ:
+- โหลดโมเดล Gemma 4 31B อัตโนมัติ
+- แกะข้อมูลทีละหน้า (OCR + Caption)
+- เซฟเป็น JSONL ลง `output_data/`
+- Auto-push ขึ้น Hugging Face ทีละ PDF
+
+### 4. ครั้งถัดไป
 ```bash
 cd ~/1
 git pull origin main
-git restore start_vllm.sh  # ถ้าไฟล์หาย
+export HF_TOKEN="hf_xxxxxxxxxxxxxxxxxxxx"
+python3 vllm_inference.py
 ```
 
 ---
 
 ## 🌟 ฟีเจอร์เด่น
-- **Auto Backend**: vLLM เลือก FLASH_ATTN อัตโนมัติสำหรับ H100
-- **Resume Ability**: รันต่อจากหน้าที่ค้างไว้ได้ทันที ไม่ต้องเริ่มใหม่
-- **Multimodal Dataset**: เก็บทั้งข้อความ Markdown และภาพต้นฉบับ
-- **Auto Sync**: เชื่อมต่อกับ Hugging Face Hub ทั้งขาเข้าและขาออก
+- **ไม่ต้องรัน Server** — ใช้ Transformers โดยตรง ง่ายกว่า vLLM
+- **2 Tasks ต่อหน้า** — OCR แยก + Caption แยก เก็บคนละคอลัมน์
+- **Resume Ability** — รันต่อจากหน้าที่ค้างไว้ได้ทันที ไม่ต้องเริ่มใหม่
+- **Auto Sync** — เชื่อมต่อ Hugging Face Hub อัตโนมัติ
 
 ---
 
 ## 📁 โครงสร้างโฟลเดอร์
-- `input/`: ไฟล์ PDF ต้นฉบับ
-- `output_data/`: ผลลัพธ์ที่แกะเสร็จแล้ว แยกตามชื่อไฟล์ PDF
-- `temp_pages/`: ไฟล์ภาพชั่วคราวระหว่างประมวลผล
+- `input/` — ไฟล์ PDF ต้นฉบับ
+- `output_data/` — ผลลัพธ์ JSONL + ภาพ แยกตามชื่อไฟล์ PDF
+- `temp_pages/` — ไฟล์ภาพชั่วคราวระหว่างประมวลผล
 
 ---
 
 ## ⚠️ หมายเหตุ
-- `start_vllm.sh` ถ้าหายให้รัน `git restore start_vllm.sh` (อย่าใช้ `rm` ลบ)
-- `poppler-utils` ต้องติดตั้งก่อนรัน `vllm_inference.py` ทุกครั้งที่ใช้ cloud ใหม่
+- ต้องติดตั้ง `poppler-utils` ก่อนรัน (`sudo apt-get install -y poppler-utils`)
+- `HF_TOKEN` ต้องมีสิทธิ์ write เพื่อ push dataset ขึ้น HF
+- RAM GPU ต้องมีพอสำหรับ Gemma 4 31B (bfloat16 ~62GB) — แนะนำ H100 80GB
 
 ---
 *Developed for Advanced Astrology AI Dataset Construction.*
