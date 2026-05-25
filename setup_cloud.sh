@@ -7,31 +7,49 @@ sudo apt-get install -y poppler-utils 2>/dev/null || conda install -c conda-forg
 echo "📦 Installing Python dependencies..."
 python3 -m pip install --upgrade pip
 
-# ตรวจสอบเวอร์ชัน CUDA ของ PyTorch ในเครื่อง
-CUDA_VERSION=$(python3 -c "
+# ตรวจสอบว่ามี ROCm/HIP (AMD Instinct GPU) หรือไม่
+IS_ROCM=$(python3 -c "
 try:
     import torch
-    v = torch.version.cuda
-    if v:
-        print(v)
-    else:
-        print('12.4')
-except Exception as e:
-    print('12.4')
+    print('True' if torch.version.hip else 'False')
+except Exception:
+    print('False')
 " 2>/dev/null)
 
-echo "🔍 Detected CUDA version from PyTorch: $CUDA_VERSION"
-
-# ติดตั้งแพ็กเกจพื้นฐาน (รวมถึง nvidia-cuda-runtime-cu12 เพื่อให้ไลบรารี libcudart.so.12 พร้อมใช้งานเสมอ)
-python3 -m pip install "numpy<2.0.0" transformers accelerate pdf2image datasets huggingface_hub hf_transfer Pillow torchvision nvidia-cuda-runtime-cu12
-
-# ติดตั้ง vLLM Nightly ให้ตรงกับเวอร์ชัน CUDA
-if [[ "$CUDA_VERSION" == 13* ]]; then
-    echo "⚡ Installing vLLM for CUDA 13.0..."
-    python3 -m pip install -U vllm --pre --extra-index-url https://wheels.vllm.ai/nightly/cu130 --extra-index-url https://download.pytorch.org/whl/cu130 || python3 -m pip install -U vllm --pre
+if [ "$IS_ROCM" = "True" ]; then
+    echo "🔍 Detected AMD Instinct GPU (ROCm/HIP environment)"
+    # ติดตั้งแพ็กเกจพื้นฐาน โดยไม่ติดตั้ง nvidia-cuda-runtime-cu12 เพื่อป้องกันปัญหาไลบรารีสับสน
+    python3 -m pip install "numpy<2.0.0" transformers accelerate pdf2image datasets huggingface_hub hf_transfer Pillow torchvision
+    echo "⚡ Installing vLLM for AMD ROCm (MI300X/MI250)..."
+    python3 -m pip install -U vllm --extra-index-url https://download.pytorch.org/whl/rocm6.1 || python3 -m pip install -U vllm
 else
-    echo "⚡ Installing vLLM for CUDA 12.9..."
-    python3 -m pip install -U vllm --pre --extra-index-url https://wheels.vllm.ai/nightly/cu129 --extra-index-url https://download.pytorch.org/whl/cu129 || python3 -m pip install -U vllm --pre
+    # กรณีเครื่องเป็น NVIDIA (CUDA)
+    # ตรวจสอบเวอร์ชัน CUDA ของ PyTorch ในเครื่อง
+    CUDA_VERSION=$(python3 -c "
+    try:
+        import torch
+        v = torch.version.cuda
+        if v:
+            print(v)
+        else:
+            print('12.4')
+    except Exception as e:
+        print('12.4')
+    " 2>/dev/null)
+
+    echo "🔍 Detected CUDA version from PyTorch: $CUDA_VERSION"
+
+    # ติดตั้งแพ็กเกจพื้นฐาน (รวมถึง nvidia-cuda-runtime-cu12 เพื่อให้ไลบรารี libcudart.so.12 พร้อมใช้งานเสมอ)
+    python3 -m pip install "numpy<2.0.0" transformers accelerate pdf2image datasets huggingface_hub hf_transfer Pillow torchvision nvidia-cuda-runtime-cu12
+
+    # ติดตั้ง vLLM Nightly ให้ตรงกับเวอร์ชัน CUDA
+    if [[ "$CUDA_VERSION" == 13* ]]; then
+        echo "⚡ Installing vLLM for CUDA 13.0..."
+        python3 -m pip install -U vllm --pre --extra-index-url https://wheels.vllm.ai/nightly/cu130 --extra-index-url https://download.pytorch.org/whl/cu130 || python3 -m pip install -U vllm --pre
+    else
+        echo "⚡ Installing vLLM for CUDA 12.9..."
+        python3 -m pip install -U vllm --pre --extra-index-url https://wheels.vllm.ai/nightly/cu129 --extra-index-url https://download.pytorch.org/whl/cu129 || python3 -m pip install -U vllm --pre
+    fi
 fi
 
 echo "📂 Creating directories..."
