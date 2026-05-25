@@ -22,8 +22,8 @@ except Exception as e:
 
 echo "🔍 Detected CUDA version from PyTorch: $CUDA_VERSION"
 
-# ติดตั้งแพ็กเกจพื้นฐาน
-python3 -m pip install "numpy<2.0.0" transformers accelerate pdf2image datasets huggingface_hub hf_transfer Pillow torchvision
+# ติดตั้งแพ็กเกจพื้นฐาน (รวมถึง nvidia-cuda-runtime-cu12 เพื่อให้ไลบรารี libcudart.so.12 พร้อมใช้งานเสมอ)
+python3 -m pip install "numpy<2.0.0" transformers accelerate pdf2image datasets huggingface_hub hf_transfer Pillow torchvision nvidia-cuda-runtime-cu12
 
 # ติดตั้ง vLLM Nightly ให้ตรงกับเวอร์ชัน CUDA
 if [[ "$CUDA_VERSION" == 13* ]]; then
