@@ -20,6 +20,9 @@ else
     echo "⚠️ Warning: Could not auto-detect nvidia libraries in site-packages."
 fi
 
+# ปิดใช้งาน DeepGEMM (บั๊กของ vLLM 0.21.x ที่พยายามเช็ก FP8 kernel บนโมเดล bf16)
+export VLLM_USE_DEEP_GEMM=0
+
 # ตรวจสอบตัวแปร HF_TOKEN
 if [ -z "$HF_TOKEN" ]; then
     echo "❌ Error: HF_TOKEN is not set. Please export HF_TOKEN=\"your_token\" before running."
