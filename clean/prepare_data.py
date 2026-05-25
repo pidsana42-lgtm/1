@@ -142,12 +142,13 @@ def clean_text_with_llm(text_list):
         
     import torch
     import re
+    from transformers import TextStreamer
     
     print(f"  ⚡ กำลังประมวลผลข้อความผ่านโมเดล LLM จำนวน {len(text_list)} หน้า...")
     
     cleaned_results = []
     for idx, text in enumerate(text_list):
-        print(f"    📄 กำลังประมวลผลหน้า {idx+1}/{len(text_list)}...")
+        print(f"\n    📄 กำลังประมวลผลหน้า {idx+1}/{len(text_list)}...")
         messages = [
             {"role": "system", "content": (
                 "คุณคือผู้เชี่ยวชาญการจัดชำระคัมภีร์และตำราโหราศาสตร์ไทยโบราณ\n"
@@ -174,12 +175,15 @@ def clean_text_with_llm(text_list):
         prompt = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         inputs = processor(prompt, return_tensors="pt").to(llm.device)
         
+        # ใช้ TextStreamer เพื่อแสดงผลลัพธ์แบบเรียลไทม์ทีละโทเค็น
+        streamer = TextStreamer(processor, skip_prompt=True, skip_special_tokens=True)
+        
         with torch.no_grad():
             outputs = llm.generate(
                 **inputs,
                 max_new_tokens=2048,
-                temperature=0.1,
-                do_sample=False
+                do_sample=False,
+                streamer=streamer
             )
             
         # Extract response
