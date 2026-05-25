@@ -24,23 +24,9 @@ if [ "$IS_ROCM" = "True" ]; then
     python3 -m pip install -U vllm --extra-index-url https://download.pytorch.org/whl/rocm6.1 || python3 -m pip install -U vllm
 else
     # กรณีเครื่องเป็น NVIDIA (CUDA)
-    # ล้าง vllm / torch ตัวเดิมที่เป็น cu129 หรือ cu130 ออกก่อนเพื่อป้องกันความขัดแย้งของ Driver
-    echo "🧹 Checking and cleaning old cu129/cu130 libraries..."
-    python3 -c "
-    import sys
-    try:
-        import torch
-        if 'cu129' in torch.__version__ or 'cu130' in torch.__version__:
-            sys.exit(0)
-    except:
-        pass
-    sys.exit(1)
-    " 2>/dev/null
-    
-    if [ $? -eq 0 ]; then
-        echo "⚠️ Detected incompatible cu129/cu130 environment. Uninstalling to fix driver issues..."
-        python3 -m pip uninstall -y vllm torch torchvision torchaudio flashinfer-python flashinfer-cubin apache-tvm-ffi tilelang 2>/dev/null
-    fi
+    # ล้าง vllm / torch ตัวเดิมออกก่อนเสมอเพื่อแก้ปัญหา Driver และป้องกันการข้ามติดตั้ง (satisfied) ของ pip
+    echo "🧹 Cleaning up existing PyTorch and vLLM packages to ensure stable installation..."
+    python3 -m pip uninstall -y vllm torch torchvision torchaudio flashinfer-python flashinfer-cubin apache-tvm-ffi tilelang 2>/dev/null
 
     # ตรวจสอบเวอร์ชัน CUDA ของ PyTorch ในเครื่อง
     CUDA_VERSION=$(python3 -c "
