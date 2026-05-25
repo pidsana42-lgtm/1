@@ -35,10 +35,10 @@ else
     python3 -m pip cache purge 2>/dev/null || true
     conda clean -ay 2>/dev/null || true
 
-    # ติดตั้ง PyTorch 2.6.0 (CUDA 12.1), Transformers 4.x Stable, และ vLLM 0.8.x Stable เพื่อรองรับ Gemma 3
-    echo "⚡ Installing PyTorch 2.6.0 (CUDA 12.1), Transformers 4.x Stable, and vLLM..."
+    # ติดตั้ง PyTorch 2.6.0 (CUDA 12.1) และ Transformers 4.x Stable (รันผ่าน Transformers โดยตรง ไม่ต้องพึ่ง vLLM)
+    echo "⚡ Installing PyTorch 2.6.0 (CUDA 12.1), Transformers 4.x Stable, and Accelerate..."
     python3 -m pip install --no-cache-dir torch==2.6.0 torchvision==0.21.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu121
-    python3 -m pip install --no-cache-dir "transformers>=4.50.0,<5.0.0" "vllm>=0.8.0,<0.9.0" accelerate pdf2image datasets huggingface_hub hf_transfer Pillow
+    python3 -m pip install --no-cache-dir "transformers>=4.50.0,<5.0.0" accelerate pdf2image datasets huggingface_hub hf_transfer Pillow
 fi
 
 echo "📂 Creating directories..."

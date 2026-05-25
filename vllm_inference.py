@@ -4,9 +4,8 @@ import torch
 from pathlib import Path
 from PIL import Image
 from pdf2image import convert_from_path
-from transformers import AutoProcessor
+from transformers import AutoProcessor, Gemma3ForConditionalGeneration
 from datasets import Dataset, Features, Value, Image as HFImage, load_dataset
-from vllm import LLM, SamplingParams
 
 
 # --- Configuration ---
@@ -20,15 +19,15 @@ BATCH_SIZE = 6  # จำนวนหน้าที่ประมวลผล�
 HF_REPO_ID = "Phonsiri/astrology-dataset"
 HF_TOKEN = os.environ.get("HF_TOKEN")
 
-print(f"🔄 Loading model {MODEL_ID} via vLLM...")
-llm = LLM(
-    model=MODEL_ID,
-    max_model_len=5120,
-    trust_remote_code=True,
-    gpu_memory_utilization=0.90
+print(f"🔄 Loading model {MODEL_ID} via Transformers...")
+model = Gemma3ForConditionalGeneration.from_pretrained(
+    MODEL_ID,
+    torch_dtype=torch.bfloat16,
+    device_map="auto",
+    token=HF_TOKEN
 )
 processor = AutoProcessor.from_pretrained(MODEL_ID, token=HF_TOKEN)
-print("✅ Model loaded via vLLM!")
+print("✅ Model loaded via Transformers!")
 
 
 def make_prompt(task, page_num):
@@ -48,42 +47,39 @@ def make_prompt(task, page_num):
 
 def run_batch(image_prompt_pairs):
     """
-    รัน inference พร้อมกัน BATCH_SIZE หน้าโดยใช้ vLLM Offline Mode
+    รัน inference ทีละหน้าใน batch โดยใช้ Transformers Mode
     image_prompt_pairs: list of (PIL.Image, prompt_str)
     คืนค่า list of str
     """
-    vllm_inputs = []
-
+    results = []
     for image, prompt in image_prompt_pairs:
         messages = [{
             "role": "user",
             "content": [
-                {"type": "image"},
+                {"type": "image", "image": image},
                 {"type": "text", "text": prompt},
             ],
         }]
-        text = processor.apply_chat_template(
+        
+        inputs = processor.apply_chat_template(
             messages,
             add_generation_prompt=True,
-            tokenize=False,
-        )
-        vllm_inputs.append({
-            "prompt": text,
-            "multi_modal_data": {"image": image}
-        })
-
-    # ตั้งค่า sampling parameters สำหรับ OCR/Caption
-    sampling_params = SamplingParams(
-        temperature=0.0,
-        max_tokens=2048
-    )
-
-    outputs = llm.generate(vllm_inputs, sampling_params=sampling_params)
-
-    results = []
-    for output in outputs:
-        results.append(output.outputs[0].text.strip())
-
+            tokenize=True,
+            return_dict=True,
+            return_tensors="pt"
+        ).to(model.device)
+        
+        with torch.no_grad():
+            outputs = model.generate(
+                **inputs,
+                max_new_tokens=2048,
+                do_sample=False
+            )
+        
+        input_len = inputs["input_ids"].shape[-1]
+        decoded = processor.decode(outputs[0][input_len:], skip_special_tokens=True)
+        results.append(decoded.strip())
+        
     return results
 
 
