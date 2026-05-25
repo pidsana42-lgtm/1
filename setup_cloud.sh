@@ -39,8 +39,7 @@ else
     echo "⚡ Installing vLLM Nightly Wheels (CUDA 12.9) and dependencies..."
     python3 -m pip install -U vllm --pre \
       --extra-index-url https://wheels.vllm.ai/nightly/cu129 \
-      --extra-index-url https://download.pytorch.org/whl/cu129 \
-      --index-strategy unsafe-best-match
+      --extra-index-url https://download.pytorch.org/whl/cu129
     python3 -m pip install --no-cache-dir "transformers>=5.9.0" accelerate pdf2image datasets huggingface_hub hf_transfer Pillow
 fi
 
