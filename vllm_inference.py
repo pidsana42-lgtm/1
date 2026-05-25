@@ -158,6 +158,64 @@ def push_to_hf():
     dataset.push_to_hub(HF_REPO_ID, token=HF_TOKEN, private=True)
     print(f"  ✅ Pushed {len(all_data)} samples to {HF_REPO_ID}")
 
+    # Auto-upload/update dataset card (README.md) on HF
+    try:
+        import io
+        from huggingface_hub import HfApi
+        api = HfApi()
+        card_content = f"""---
+pretty_name: Astrology PDF OCR & Captions Dataset
+task_categories:
+- image-to-text
+- text-generation
+language:
+- th
+- en
+tags:
+- astrology
+- ocr
+- gemma4
+- pdf-parsing
+license: apache-2.0
+---
+
+# Astrology PDF OCR & Captions Dataset
+
+This dataset contains OCR text and image descriptions (captions) extracted from Thai Astrology PDF documents. The extraction is performed using the **Gemma 4 31B** multimodal model.
+
+## Dataset Structure
+
+The dataset contains the following columns:
+
+| Column | Type | Description |
+|---|---|---|
+| `source` | string | The name of the source PDF document. |
+| `page` | int32 | The page number in the source document. |
+| `image` | image | The original page image (rendered from PDF). |
+| `text` | string | Full OCR text extracted from the page (formatted in Markdown). |
+| `caption` | string | Detailed description of any charts, tables, or astrological diagrams in the page. |
+
+## Creation Process
+
+1. **PDF Rendering:** Source PDFs are rendered to JPEG images at 150 DPI.
+2. **Double-Inference Pipeline:**
+   - **OCR:** Gemma 4 31B is prompted to extract all text exactly as shown.
+   - **Captioning:** Gemma 4 31B is prompted to describe charts/diagrams/tables in detail.
+3. **Execution Engine:** Powered by `vLLM` offline inference.
+
+*Developed for Advanced Astrology AI Dataset Construction.*
+"""
+        api.upload_file(
+            path_or_fileobj=io.BytesIO(card_content.encode("utf-8")),
+            path_in_repo="README.md",
+            repo_id=HF_REPO_ID,
+            repo_type="dataset",
+            token=HF_TOKEN
+        )
+        print("  ✅ Dataset card updated on Hugging Face!")
+    except Exception as e:
+        print(f"  ⚠️ Warning: Failed to update dataset card on HF: {e}")
+
 
 def sync_from_hf():
     if not HF_TOKEN:
