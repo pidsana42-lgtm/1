@@ -66,14 +66,14 @@ language:
 tags:
 - astrology
 - ocr
-- gemma3
+- gemma4
 - pdf-parsing
 license: apache-2.0
 ---
 
 # Astrology PDF OCR & Captions Dataset
 
-This dataset contains OCR text and image descriptions (captions) extracted from Thai Astrology PDF documents. The extraction is performed using the **Gemma 3 27B** multimodal model.
+This dataset contains OCR text and image descriptions (captions) extracted from Thai Astrology PDF documents. The extraction is performed using the **Gemma 4 31B** multimodal model.
 
 ## Dataset Structure
 
@@ -91,8 +91,8 @@ The dataset contains the following columns:
 
 1. **PDF Rendering:** Source PDFs are rendered to JPEG images at 150 DPI.
 2. **Double-Inference Pipeline:**
-   - **OCR:** Gemma 3 27B is prompted to extract all text exactly as shown.
-   - **Captioning:** Gemma 3 27B is prompted to describe charts/diagrams/tables in detail.
+   - **OCR:** Gemma 4 31B is prompted to extract all text exactly as shown.
+   - **Captioning:** Gemma 4 31B is prompted to describe charts/diagrams/tables in detail.
 3. **Execution Engine:** Powered by `vLLM` offline inference.
 
 *Developed for Advanced Astrology AI Dataset Construction.*
