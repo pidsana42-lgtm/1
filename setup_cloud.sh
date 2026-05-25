@@ -55,11 +55,9 @@ else
     
     echo "🎯 Selecting CUDA build target: $WHL_CUDA"
     
-    # ติดตั้ง PyTorch และ vLLM เวอร์ชันที่เข้ากันได้กับ Driver (ผ่าน Nightly Wheels index ของ vLLM)
-    echo "⚡ Installing compatible vLLM and PyTorch for target $WHL_CUDA..."
-    python3 -m pip install -U vllm --pre \
-      --extra-index-url https://wheels.vllm.ai/nightly/$WHL_CUDA \
-      --extra-index-url https://download.pytorch.org/whl/$WHL_CUDA
+    # ติดตั้ง PyTorch เวอร์ชันเสถียรที่เข้ากันได้กับ Driver
+    echo "⚡ Installing stable PyTorch for target $WHL_CUDA..."
+    python3 -m pip install -U torch torchvision torchaudio --index-url https://download.pytorch.org/whl/$WHL_CUDA
     python3 -m pip install --no-cache-dir "transformers>=5.9.0" accelerate pdf2image datasets huggingface_hub hf_transfer Pillow
 fi
 

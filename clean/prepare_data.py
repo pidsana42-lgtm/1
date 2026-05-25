@@ -113,39 +113,41 @@ def should_skip_page(text, caption):
 
 def init_llm(model_id, gpu_memory_utilization=0.80):
     """
-    โหลดโมเดลผ่าน vLLM เพื่อใช้ประมวลผลข้อความภาษาไทย
+    โหลดโมเดลผ่าน Transformers เพื่อใช้ประมวลผลข้อความภาษาไทย
     """
     global llm, processor
     try:
-        from vllm import LLM
-        from transformers import AutoProcessor
+        import torch
+        from transformers import AutoModelForCausalLM, AutoTokenizer
     except ImportError:
-        print("❌ Error: ไม่พบไลบรารี vllm หรือ transformers ในสภาพแวดล้อมนี้ กรุณาติดตั้งก่อนใช้งานโหมด LLM")
+        print("❌ Error: ไม่พบไลบรารี torch หรือ transformers ในสภาพแวดล้อมนี้ กรุณาติดตั้งก่อนใช้งาน")
         sys.exit(1)
         
-    print(f"🔄 กำลังโหลดโมเดล {model_id} ผ่าน vLLM สำหรับแก้ภาษา...")
-    llm = LLM(
-        model=model_id,
-        trust_remote_code=True,
-        gpu_memory_utilization=gpu_memory_utilization,
-        max_model_len=4096
+    print(f"🔄 กำลังโหลดโมเดล {model_id} ผ่าน Transformers สำหรับแก้ภาษา...")
+    processor = AutoTokenizer.from_pretrained(model_id)
+    llm = AutoModelForCausalLM.from_pretrained(
+        model_id,
+        torch_dtype=torch.bfloat16,
+        device_map="auto",
+        trust_remote_code=True
     )
-    processor = AutoProcessor.from_pretrained(model_id)
     print("✅ โหลดโมเดล LLM สำหรับเรียงข้อความเสร็จสิ้น!")
 
 def clean_text_with_llm(text_list):
     """
-    ใช้ LLM ขัดเกลาคำผิด เรียงไวยากรณ์ ตัดขึ้นบรรทัดใหม่ และจำแนกหมวดหมู่สำหรับประมวลผลต่อ (แบบ Batch vLLM)
+    ใช้ LLM ขัดเกลาคำผิด เรียงไวยากรณ์ ตัดขึ้นบรรทัดใหม่ และจำแนกหมวดหมู่สำหรับประมวลผลต่อ (แบบ Transformers)
     """
     if not llm or not text_list:
         return [{"text": t, "category": "อื่นๆ"} for t in text_list]
         
-    from vllm import SamplingParams
+    import torch
+    import re
     
     print(f"  ⚡ กำลังประมวลผลข้อความผ่านโมเดล LLM จำนวน {len(text_list)} หน้า...")
     
-    prompts = []
-    for text in text_list:
+    cleaned_results = []
+    for idx, text in enumerate(text_list):
+        print(f"    📄 กำลังประมวลผลหน้า {idx+1}/{len(text_list)}...")
         messages = [
             {"role": "system", "content": (
                 "คุณคือผู้เชี่ยวชาญการจัดชำระคัมภีร์และตำราโหราศาสตร์ไทยโบราณ\n"
@@ -170,19 +172,19 @@ def clean_text_with_llm(text_list):
             {"role": "user", "content": f"ข้อความ OCR ดิบ:\n{text}"}
         ]
         prompt = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-        prompts.append(prompt)
+        inputs = processor(prompt, return_tensors="pt").to(llm.device)
         
-    sampling_params = SamplingParams(
-        temperature=0.0,
-        max_tokens=2048,
-    )
-    
-    outputs = llm.generate(prompts, sampling_params=sampling_params)
-    
-    import re
-    cleaned_results = []
-    for output in outputs:
-        resp_text = output.outputs[0].text.strip()
+        with torch.no_grad():
+            outputs = llm.generate(
+                **inputs,
+                max_new_tokens=2048,
+                temperature=0.1,
+                do_sample=False
+            )
+            
+        # Extract response
+        input_len = inputs.input_ids.shape[1]
+        resp_text = processor.decode(outputs[0][input_len:], skip_special_tokens=True).strip()
         
         # ดึงหมวดหมู่
         category_match = re.search(r"\[หมวดหมู่\]:\s*(.*?)(?:\n|$)", resp_text)
