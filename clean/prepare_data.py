@@ -116,6 +116,22 @@ def init_llm(model_id, gpu_memory_utilization=0.80):
     โหลดโมเดลผ่าน Transformers เพื่อใช้ประมวลผลข้อความภาษาไทย
     """
     global llm, processor
+    
+    # แก้ไขชื่อโมเดลอัตโนมัติหากพิมพ์ผิด
+    model_lower = model_id.lower().strip()
+    if "gemma-4-26b" in model_lower:
+        model_id = "google/gemma-4-26B-A4B-it"
+        print(f"🔄 ปรับชื่อโมเดลอัตโนมัติเป็น: {model_id}")
+    elif "gemma-4-31b" in model_lower:
+        model_id = "google/gemma-4-31b-it"
+        print(f"🔄 ปรับชื่อโมเดลอัตโนมัติเป็น: {model_id}")
+    elif "gemma-4-e4b" in model_lower:
+        model_id = "google/gemma-4-E4B-it"
+        print(f"🔄 ปรับชื่อโมเดลอัตโนมัติเป็น: {model_id}")
+    elif "gemma-4-e2b" in model_lower:
+        model_id = "google/gemma-4-E2B-it"
+        print(f"🔄 ปรับชื่อโมเดลอัตโนมัติเป็น: {model_id}")
+
     try:
         import torch
         from transformers import AutoModelForCausalLM, AutoTokenizer
