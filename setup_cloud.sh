@@ -35,11 +35,35 @@ else
     python3 -m pip cache purge 2>/dev/null || true
     conda clean -ay 2>/dev/null || true
 
-    # ติดตั้ง vLLM Nightly Wheels (CUDA 12.9) และไลบรารีที่จำเป็นอื่นๆ
-    echo "⚡ Installing vLLM Nightly Wheels (CUDA 12.9) and dependencies..."
-    python3 -m pip install -U vllm --pre \
-      --extra-index-url https://wheels.vllm.ai/nightly/cu129 \
-      --extra-index-url https://download.pytorch.org/whl/cu129
+    # ตรวจสอบและตรวจจับเวอร์ชัน CUDA ของเครื่องโฮสต์ (ผ่าน nvidia-smi) เพื่อเลือกบิลด์ให้ตรงและป้องกันปัญหา Mismatch
+    echo "🔍 Detecting host GPU driver and CUDA compatibility..."
+    CUDA_VERSION=$(nvidia-smi 2>/dev/null | grep -o "CUDA Version: [0-9.]*" | cut -d' ' -f3)
+    
+    WHL_CUDA="cu124" # ค่าเริ่มต้นเป็น CUDA 12.4
+    if [ -n "$CUDA_VERSION" ]; then
+        echo "✅ Detected Host GPU supports CUDA Version: $CUDA_VERSION"
+        MAJOR=$(echo "$CUDA_VERSION" | cut -d'.' -f1)
+        MINOR=$(echo "$CUDA_VERSION" | cut -d'.' -f2)
+        if [ "$MAJOR" -eq 12 ] && [ "$MINOR" -lt 4 ]; then
+            WHL_CUDA="cu121"
+        elif [ "$MAJOR" -lt 12 ]; then
+            WHL_CUDA="cu121"
+        fi
+    else
+        echo "⚠️ Warning: ไม่พบ nvidia-smi หรือไม่สามารถเข้าถึงไดรเวอร์ได้ จะข้ามการตรวจจับและใช้ค่าเริ่มต้น (CUDA 12.4)"
+    fi
+    
+    echo "🎯 Selecting CUDA build target: $WHL_CUDA"
+    
+    # ติดตั้ง PyTorch และ vLLM เวอร์ชันเสถียรที่เข้ากันได้กับ Driver
+    echo "⚡ Installing compatible vLLM and PyTorch..."
+    if [ "$WHL_CUDA" = "cu121" ]; then
+        python3 -m pip install -U torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+        python3 -m pip install -U vllm --extra-index-url https://download.pytorch.org/whl/cu121
+    else
+        python3 -m pip install -U torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+        python3 -m pip install -U vllm
+    fi
     python3 -m pip install --no-cache-dir "transformers>=5.9.0" accelerate pdf2image datasets huggingface_hub hf_transfer Pillow
 fi
 
