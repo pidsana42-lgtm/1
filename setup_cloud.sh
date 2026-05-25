@@ -24,9 +24,10 @@ if [ "$IS_ROCM" = "True" ]; then
     python3 -m pip install -U vllm --extra-index-url https://download.pytorch.org/whl/rocm6.1 || python3 -m pip install -U vllm
 else
     # กรณีเครื่องเป็น NVIDIA (CUDA)
-    # ล้าง vllm / torch ตัวเดิมออกก่อนเสมอเพื่อแก้ปัญหา Driver และป้องกันการข้ามติดตั้ง (satisfied) ของ pip
-    echo "🧹 Cleaning up existing PyTorch and vLLM packages to ensure stable installation..."
+    # ล้าง vllm / torch และแพ็กเกจ CUDA ย่อยที่เป็นของ cu129/cu130 ออกก่อนทั้งหมดเพื่อป้องกันปัญหา Symbol Mismatch
+    echo "🧹 Cleaning up existing PyTorch, vLLM, and old nvidia-cuda packages..."
     pip uninstall -y vllm torch torchvision torchaudio flashinfer-python flashinfer-cubin apache-tvm-ffi tilelang 2>/dev/null || true
+    pip uninstall -y nvidia-nccl-cu12 nvidia-cudnn-cu12 nvidia-cublas-cu12 nvidia-cuda-runtime-cu12 nvidia-cuda-cupti-cu12 nvidia-curand-cu12 nvidia-cusolver-cu12 nvidia-cusparse-cu12 nvidia-nvtx-cu12 nvidia-nvjitlink-cu12 nvidia-cuda-nvrtc-cu12 2>/dev/null || true
     conda remove -y vllm torch torchvision torchaudio 2>/dev/null || true
 
     # ติดตั้ง PyTorch + CUDA 12.1 ใหม่เพื่อแก้ปัญหา Driver
