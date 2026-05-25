@@ -23,7 +23,7 @@ HF_TOKEN = os.environ.get("HF_TOKEN")
 print(f"🔄 Loading model {MODEL_ID} via vLLM...")
 llm = LLM(
     model=MODEL_ID,
-    max_model_len=4096,
+    max_model_len=5120,
     trust_remote_code=True,
     gpu_memory_utilization=0.90,
     hf_overrides={
