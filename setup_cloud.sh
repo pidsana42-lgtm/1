@@ -7,7 +7,7 @@ sudo apt-get install -y poppler-utils 2>/dev/null || conda install -c conda-forg
 echo "📦 Installing Python dependencies..."
 pip install --upgrade pip
 pip install "numpy<2.0.0" transformers accelerate pdf2image datasets huggingface_hub hf_transfer Pillow torchvision
-pip install -U vllm --pre --extra-index-url https://wheels.vllm.ai/nightly/cu124 --extra-index-url https://wheels.vllm.ai/nightly/cu129 --extra-index-url https://download.pytorch.org/whl/cu129 --index-strategy unsafe-best-match || pip install vllm --pre
+pip install -U vllm --pre --extra-index-url https://wheels.vllm.ai/nightly/cu124 --extra-index-url https://wheels.vllm.ai/nightly/cu129 --extra-index-url https://download.pytorch.org/whl/cu129 || pip install -U vllm --pre
 
 echo "📂 Creating directories..."
 mkdir -p input output_data temp_pages
