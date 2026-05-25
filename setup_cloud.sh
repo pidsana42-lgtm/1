@@ -26,43 +26,13 @@ else
     # กรณีเครื่องเป็น NVIDIA (CUDA)
     # ล้าง vllm / torch ตัวเดิมออกก่อนเสมอเพื่อแก้ปัญหา Driver และป้องกันการข้ามติดตั้ง (satisfied) ของ pip
     echo "🧹 Cleaning up existing PyTorch and vLLM packages to ensure stable installation..."
-    python3 -m pip uninstall -y vllm torch torchvision torchaudio flashinfer-python flashinfer-cubin apache-tvm-ffi tilelang 2>/dev/null
+    pip uninstall -y vllm torch torchvision torchaudio flashinfer-python flashinfer-cubin apache-tvm-ffi tilelang 2>/dev/null || true
+    conda remove -y vllm torch torchvision torchaudio 2>/dev/null || true
 
-    # ตรวจสอบเวอร์ชัน CUDA ของ PyTorch ในเครื่อง
-    CUDA_VERSION=$(python3 -c "
-    try:
-        import torch
-        v = torch.version.cuda
-        if v:
-            print(v)
-        else:
-            print('12.1')
-    except Exception as e:
-        print('12.1')
-    " 2>/dev/null)
-
-    echo "🔍 Detected CUDA version from PyTorch: $CUDA_VERSION"
-
-    # ติดตั้งแพ็กเกจพื้นฐาน (รวมถึง nvidia-cuda-runtime-cu12 เพื่อให้ไลบรารี libcudart.so.12 พร้อมใช้งานเสมอ)
-    python3 -m pip install "numpy<2.0.0" transformers accelerate pdf2image datasets huggingface_hub hf_transfer Pillow torchvision nvidia-cuda-runtime-cu12
-
-    # พยายามติดตั้ง vLLM เวอร์ชันปกติที่เข้ากันได้กับระบบก่อนเพื่อหลีกเลี่ยงปัญหา Driver เก่า
-    echo "⚡ Installing stable vLLM..."
-    if python3 -m pip install vllm; then
-        echo "✅ Installed stable vLLM successfully!"
-    else
-        echo "⚠️ Stable vLLM install failed, trying version-specific fallback..."
-        if [[ "$CUDA_VERSION" == 12.4* ]]; then
-            echo "⚡ Installing vLLM for CUDA 12.4..."
-            python3 -m pip install vllm --extra-index-url https://download.pytorch.org/whl/cu124
-        elif [[ "$CUDA_VERSION" == 12.1* ]]; then
-            echo "⚡ Installing vLLM for CUDA 12.1..."
-            python3 -m pip install vllm --extra-index-url https://download.pytorch.org/whl/cu121
-        else
-            echo "⚡ Installing default vLLM..."
-            python3 -m pip install vllm
-        fi
-    fi
+    # ติดตั้ง PyTorch + CUDA 12.1 ใหม่เพื่อแก้ปัญหา Driver
+    echo "⚡ Installing stable PyTorch and vLLM for CUDA 12.1..."
+    pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+    pip install --no-cache-dir vllm
 fi
 
 echo "📂 Creating directories..."
