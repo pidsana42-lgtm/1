@@ -35,9 +35,12 @@ else
     python3 -m pip cache purge 2>/dev/null || true
     conda clean -ay 2>/dev/null || true
 
-    # ติดตั้ง PyTorch 2.5.1 (CUDA 12.1) และ Transformers 5.x Stable (รันผ่าน Transformers โดยตรง ไม่ต้องพึ่ง vLLM)
-    echo "⚡ Installing PyTorch 2.5.1 (CUDA 12.1), Transformers 5.x Stable, and Accelerate..."
-    python3 -m pip install --no-cache-dir torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu121
+    # ติดตั้ง vLLM Nightly Wheels (CUDA 12.9) และไลบรารีที่จำเป็นอื่นๆ
+    echo "⚡ Installing vLLM Nightly Wheels (CUDA 12.9) and dependencies..."
+    python3 -m pip install -U vllm --pre \
+      --extra-index-url https://wheels.vllm.ai/nightly/cu129 \
+      --extra-index-url https://download.pytorch.org/whl/cu129 \
+      --index-strategy unsafe-best-match
     python3 -m pip install --no-cache-dir "transformers>=5.9.0" accelerate pdf2image datasets huggingface_hub hf_transfer Pillow
 fi
 

@@ -117,30 +117,32 @@ def init_llm(model_id, gpu_memory_utilization=0.80):
     """
     global llm, processor
     try:
-        from vllm import LLM as VLLM_LLM
+        from vllm import LLM
         from transformers import AutoProcessor
     except ImportError:
         print("❌ Error: ไม่พบไลบรารี vllm หรือ transformers ในสภาพแวดล้อมนี้ กรุณาติดตั้งก่อนใช้งานโหมด LLM")
         sys.exit(1)
         
     print(f"🔄 กำลังโหลดโมเดล {model_id} ผ่าน vLLM สำหรับแก้ภาษา...")
-    llm = VLLM_LLM(
+    llm = LLM(
         model=model_id,
-        max_model_len=4096,
         trust_remote_code=True,
         gpu_memory_utilization=gpu_memory_utilization,
+        max_model_len=4096
     )
     processor = AutoProcessor.from_pretrained(model_id)
     print("✅ โหลดโมเดล LLM สำหรับเรียงข้อความเสร็จสิ้น!")
 
 def clean_text_with_llm(text_list):
     """
-    ใช้ LLM ขัดเกลาคำผิด เรียงไวยากรณ์ และตัดขึ้นบรรทัดใหม่ให้สมบูรณ์สำหรับประมวลผลต่อ
+    ใช้ LLM ขัดเกลาคำผิด เรียงไวยากรณ์ และตัดขึ้นบรรทัดใหม่ให้สมบูรณ์สำหรับประมวลผลต่อ (แบบ Batch vLLM)
     """
     if not llm or not text_list:
         return text_list
         
     from vllm import SamplingParams
+    
+    print(f"  ⚡ กำลังประมวลผลข้อความผ่านโมเดล LLM จำนวน {len(text_list)} หน้า...")
     
     prompts = []
     for text in text_list:
@@ -160,13 +162,13 @@ def clean_text_with_llm(text_list):
         
     sampling_params = SamplingParams(
         temperature=0.0,
-        max_tokens=2048
+        max_tokens=2048,
     )
     
-    print(f"  ⚡ กำลังประมวลผลข้อความผ่านโมเดล LLM จำนวน {len(text_list)} หน้า...")
     outputs = llm.generate(prompts, sampling_params=sampling_params)
+    cleaned_results = [output.outputs[0].text.strip() for output in outputs]
     
-    return [output.outputs[0].text.strip() for output in outputs]
+    return cleaned_results
 
 def recursive_chunk_text(text, chunk_size=1500, chunk_overlap=200):
     """

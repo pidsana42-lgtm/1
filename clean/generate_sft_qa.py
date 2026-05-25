@@ -6,31 +6,28 @@ import argparse
 from pathlib import Path
 from datasets import Dataset, Features, Value, load_dataset
 
-# ตัวแปรโกลบอลสำหรับโมเดล vLLM
-llm = None
-processor = None
-
 def init_llm(model_id, gpu_memory_utilization=0.80):
     """
     โหลดโมเดลผ่าน vLLM สำหรับใช้สร้างคำถาม-คำตอบเชิงลึกแบบมี <think>
     """
     global llm, processor
     try:
-        from vllm import LLM as VLLM_LLM
+        from vllm import LLM
         from transformers import AutoProcessor
     except ImportError:
         print("❌ Error: ไม่พบไลบรารี vllm หรือ transformers ในสภาพแวดล้อมนี้ กรุณาติดตั้งก่อนใช้งาน")
         sys.exit(1)
         
     print(f"🔄 กำลังโหลดโมเดล {model_id} ผ่าน vLLM สำหรับสร้างคู่คำถาม...")
-    llm = VLLM_LLM(
+    llm = LLM(
         model=model_id,
-        max_model_len=4096,
         trust_remote_code=True,
         gpu_memory_utilization=gpu_memory_utilization,
+        max_model_len=8192
     )
     processor = AutoProcessor.from_pretrained(model_id)
     print("✅ โหลดโมเดล LLM สำหรับสร้าง QA เสร็จสมบูรณ์!")
+
 
 def generate_qa_with_llm(chunk_list):
     """
@@ -132,7 +129,7 @@ def generate_qa_with_llm(chunk_list):
         except Exception as e:
             print(f"  ⚠️ ไม่สามารถพาร์สผลลัพธ์ของ Chunk {chunk.get('chunk_id')} เป็น JSON ได้ ({e}), กำลังทำ Fallback...")
             # Fallback หาก JSON โครงสร้างผิดเพี้ยน
-            fallback_q1 = "ช่วยทำนายดวงชะตาตามหลักเกณฑ์ในคัมภีร์หน้านี้ให้ทีค่ะหมอ"
+            fallback_q1 = "ช่วยทำนายดวงชะตาตามหลักเกณฑ์ in คัมภีร์หน้านี้ให้ทีค่ะหมอ"
             fallback_r1 = f"<think>\nวิเคราะห์สาระสำคัญตำราโหราศาสตร์หน้า {chunk.get('page')}\n</think>\n{raw_text[:len(raw_text)//2]}"
             fallback_q2 = "มีข้อควรระวังหรือเกณฑ์อะไรที่ต้องใส่ใจเป็นพิเศษเพิ่มเติมอีกไหมคะ?"
             fallback_r2 = f"<think>\nค้นหารายละเอียดเชิงลึกเพิ่มเติมในบริบท\n</think>\n{raw_text[len(raw_text)//2:]}"
@@ -147,7 +144,7 @@ def generate_qa_with_llm(chunk_list):
                 "response2": fallback_r2
             })
             
-    return results
+
 
 def push_sft_progress_to_hf(qa_rows, repo_id, hf_token):
     """

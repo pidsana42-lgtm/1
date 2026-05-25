@@ -1,11 +1,11 @@
 import os
 import json
-import torch
 from pathlib import Path
 from PIL import Image
 from pdf2image import convert_from_path
-from transformers import AutoProcessor, Gemma4ForConditionalGeneration
+from transformers import AutoProcessor
 from datasets import Dataset, Features, Value, Image as HFImage, load_dataset
+from vllm import LLM, SamplingParams
 
 
 # --- Configuration ---
@@ -13,21 +13,27 @@ MODEL_ID = "google/gemma-4-31b-it"
 INPUT_DIR = "input"
 OUTPUT_DIR = "output_data"
 TEMP_IMAGE_DIR = "temp_pages"
-BATCH_SIZE = 6  # จำนวนหน้าที่ประมวลผลพร้อมกัน (ปรับตาม VRAM)
+BATCH_SIZE = 16  # จำนวนหน้าที่ประมวลผลพร้อมกัน (ปรับเพิ่มตามประสิทธิภาพ vLLM)
 
 # --- Hugging Face Configuration ---
 HF_REPO_ID = "Phonsiri/astrology-dataset"
 HF_TOKEN = os.environ.get("HF_TOKEN")
 
-print(f"🔄 Loading model {MODEL_ID} via Transformers...")
-model = Gemma4ForConditionalGeneration.from_pretrained(
-    MODEL_ID,
-    torch_dtype=torch.bfloat16,
-    device_map="auto",
-    token=HF_TOKEN
+print(f"🔄 Loading model {MODEL_ID} via vLLM...")
+llm = LLM(
+    model=MODEL_ID,
+    max_model_len=8192,
+    trust_remote_code=True,
+    limit_mm_per_prompt={"image": 1},
+    hf_overrides={
+        "vision_config": {"default_output_length": 1120},
+        "vision_soft_tokens_per_image": 1120
+    },
+    mm_processor_kwargs={"max_soft_tokens": 280},
+    gpu_memory_utilization=0.90,
 )
 processor = AutoProcessor.from_pretrained(MODEL_ID, token=HF_TOKEN)
-print("✅ Model loaded via Transformers!")
+print("✅ Model loaded via vLLM!")
 
 
 def make_prompt(task, page_num):
@@ -47,39 +53,39 @@ def make_prompt(task, page_num):
 
 def run_batch(image_prompt_pairs):
     """
-    รัน inference ทีละหน้าใน batch โดยใช้ Transformers Mode
+    รัน inference ใน batch โดยใช้ vLLM Mode เพื่อความเร็วสูงสุด
     image_prompt_pairs: list of (PIL.Image, prompt_str)
     คืนค่า list of str
     """
-    results = []
+    inputs = []
     for image, prompt in image_prompt_pairs:
         messages = [{
             "role": "user",
             "content": [
-                {"type": "image", "image": image},
+                {"type": "image"},
                 {"type": "text", "text": prompt},
             ],
         }]
         
-        inputs = processor.apply_chat_template(
+        prompt_text = processor.apply_chat_template(
             messages,
             add_generation_prompt=True,
-            tokenize=True,
-            return_dict=True,
-            return_tensors="pt"
-        ).to(model.device)
+            tokenize=False
+        )
         
-        with torch.no_grad():
-            outputs = model.generate(
-                **inputs,
-                max_new_tokens=2048,
-                do_sample=False
-            )
+        inputs.append({
+            "prompt": prompt_text,
+            "multi_modal_data": {"image": image},
+            "mm_processor_kwargs": {"max_soft_tokens": 1120}
+        })
         
-        input_len = inputs["input_ids"].shape[-1]
-        decoded = processor.decode(outputs[0][input_len:], skip_special_tokens=True)
-        results.append(decoded.strip())
-        
+    sampling_params = SamplingParams(
+        temperature=0.0,
+        max_tokens=2048,
+    )
+    
+    outputs = llm.generate(inputs, sampling_params=sampling_params)
+    results = [output.outputs[0].text.strip() for output in outputs]
     return results
 
 
