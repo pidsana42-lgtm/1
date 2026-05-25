@@ -38,48 +38,53 @@
 
 ---
 
-## 🚀 ขั้นตอนการรันบน Cloud (H100)
+## 🚀 ขั้นตอนการรันบน Cloud ใหม่ (H100 / A100)
 
-### 1. ติดตั้งครั้งแรก
+### 1. โคลนและติดตั้งครั้งแรก
+เมื่อเริ่มรันบนเครื่อง Cloud ใหม่ ให้รันคำสั่งกลุ่มนี้เพื่อดาวน์โหลดสคริปต์, ตั้งค่าสิทธิ์, และดาวน์โหลดโมเดล/ความคุ้มกัน CUDA:
 ```bash
+# โคลนโปรเจกต์
 git clone https://github.com/pidsana42-lgtm/1.git
 cd 1
+
+# ตั้งค่า Token เป็น Global (สำคัญมาก: ห้ามลืม export เพื่อให้สคริปต์ลูกเรียกใช้ได้)
 export HF_TOKEN="hf_xxxxxxxxxxxxxxxxxxxx"
 
-# ติดตั้ง system deps (poppler จำเป็นสำหรับ pdf2image)
+# ติดตั้ง System Dependencies (poppler สำหรับแปลง PDF)
 sudo apt-get install -y poppler-utils
 
-# ติดตั้ง Python libs + โหลด PDF
+# รันตัวติดตั้ง (สคริปต์จะเช็กเวอร์ชัน CUDA ในเครื่อง แล้วติดตั้ง vLLM + ตัวกู้คืนไลบรารีที่เหมาะสมให้เอง)
 bash setup_cloud.sh
 ```
 
-### 2. วาง PDF ลง input/
+### 2. วาง PDF ลงโฟลเดอร์ input/
 ```bash
-# ถ้า PDF อยู่บน cloud แล้ว ย้ายเข้า input/
+# หากมีไฟล์ PDF อยู่ในเครื่อง Cloud แล้ว ให้ย้ายเข้า input/
 mv /path/to/your/pdfs/*.pdf input/
 
-# หรือถ้าอยู่บน Hugging Face ให้รัน
+# หรือถ้าต้องการดึงไฟล์ PDF ต้นฉบับจาก Hugging Face ให้รัน:
 python3 download_pdfs.py
 ```
 
-### 3. รันประมวลผล (Terminal เดียว ไม่ต้องรัน server!)
+### 3. เริ่มรันประมวลผล (รันต่ออัตโนมัติ)
+ในการรันทุกครั้ง ให้รันผ่านสคริปต์ครอบ **`run.sh`** เพื่อเชื่อมต่อไลบรารี CUDA เข้ากับโค้ดโดยอัตโนมัติ:
 ```bash
 export HF_TOKEN="hf_xxxxxxxxxxxxxxxxxxxx"
-python3 vllm_inference.py
+bash run.sh
 ```
 
 ระบบจะ:
-- โหลดโมเดล Gemma 4 31B อัตโนมัติ
-- แกะข้อมูลทีละหน้า (OCR + Caption)
-- เซฟเป็น JSONL ลง `output_data/`
-- Auto-push ขึ้น Hugging Face ทีละ PDF
+- **Auto-Sync:** ดึงประวัติที่ทำเสร็จแล้วบน Hugging Face ลงมากู้คืนโฟลเดอร์ผลลัพธ์บนเครื่อง Cloud ใหม่นี้
+- **Auto-Resume:** ข้ามหน้าเก่าที่ทำเสร็จแล้ว และรันหน้าถัดไปต่อให้อัตโนมัติทันที
+- **vLLM Offline Mode:** ประมวลผลแบบ Batch ด้วยความเร็วสูงโดยไม่ต้องสตาร์ต Server แยก
+- **Auto-Push:** อัปเดตข้อมูลขึ้น Hugging Face ใหม่ทุก ๆ 1 Batch
 
-### 4. ครั้งถัดไป
+### 4. การดึงโค้ดเวอร์ชันล่าสุดในครั้งถัดไป
+หากมีการแก้ไขสคริปต์เพิ่มเติม ให้รันคำสั่งเหล่านี้เพื่ออัปเดตโค้ด:
 ```bash
-cd ~/1
 git pull origin main
 export HF_TOKEN="hf_xxxxxxxxxxxxxxxxxxxx"
-python3 vllm_inference.py
+bash run.sh
 ```
 
 ---
