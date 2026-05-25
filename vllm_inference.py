@@ -10,7 +10,7 @@ from vllm import LLM, SamplingParams
 
 
 # --- Configuration ---
-MODEL_ID = "google/gemma-4-31b-it"
+MODEL_ID = "google/gemma-3-27b-it"
 INPUT_DIR = "input"
 OUTPUT_DIR = "output_data"
 TEMP_IMAGE_DIR = "temp_pages"
@@ -25,12 +25,7 @@ llm = LLM(
     model=MODEL_ID,
     max_model_len=5120,
     trust_remote_code=True,
-    gpu_memory_utilization=0.90,
-    hf_overrides={
-        "vision_config": {"default_output_length": 560},
-        "vision_soft_tokens_per_image": 560
-    },
-    mm_processor_kwargs={"max_soft_tokens": 560}
+    gpu_memory_utilization=0.90
 )
 processor = AutoProcessor.from_pretrained(MODEL_ID, token=HF_TOKEN)
 print("✅ Model loaded via vLLM!")
@@ -174,14 +169,14 @@ language:
 tags:
 - astrology
 - ocr
-- gemma4
+- gemma3
 - pdf-parsing
 license: apache-2.0
 ---
 
 # Astrology PDF OCR & Captions Dataset
 
-This dataset contains OCR text and image descriptions (captions) extracted from Thai Astrology PDF documents. The extraction is performed using the **Gemma 4 31B** multimodal model.
+This dataset contains OCR text and image descriptions (captions) extracted from Thai Astrology PDF documents. The extraction is performed using the **Gemma 3 27B** multimodal model.
 
 ## Dataset Structure
 
@@ -199,8 +194,8 @@ The dataset contains the following columns:
 
 1. **PDF Rendering:** Source PDFs are rendered to JPEG images at 150 DPI.
 2. **Double-Inference Pipeline:**
-   - **OCR:** Gemma 4 31B is prompted to extract all text exactly as shown.
-   - **Captioning:** Gemma 4 31B is prompted to describe charts/diagrams/tables in detail.
+   - **OCR:** Gemma 3 27B is prompted to extract all text exactly as shown.
+   - **Captioning:** Gemma 3 27B is prompted to describe charts/diagrams/tables in detail.
 3. **Execution Engine:** Powered by `vLLM` offline inference.
 
 *Developed for Advanced Astrology AI Dataset Construction.*

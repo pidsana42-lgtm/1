@@ -30,11 +30,10 @@ else
     pip uninstall -y nvidia-nccl-cu12 nvidia-nccl-cu13 nvidia-cudnn-cu12 nvidia-cudnn-cu13 nvidia-cublas-cu12 nvidia-cublas-cu13 nvidia-cuda-runtime-cu12 nvidia-cuda-runtime-cu13 nvidia-cuda-cupti-cu12 nvidia-cuda-cupti-cu13 nvidia-curand-cu12 nvidia-curand-cu13 nvidia-cusolver-cu12 nvidia-cusolver-cu13 nvidia-cusparse-cu12 nvidia-cusparse-cu13 nvidia-nvtx-cu12 nvidia-nvtx-cu13 nvidia-nvjitlink-cu12 nvidia-nvjitlink-cu13 nvidia-cuda-nvrtc-cu12 nvidia-cuda-nvrtc-cu13 2>/dev/null || true
     conda remove -y vllm torch torchvision torchaudio transformers 2>/dev/null || true
 
-    # ติดตั้ง PyTorch 2.6.0 (CUDA 12.1) เพื่อรองรับ FSDP Policy ของ Transformers และ vLLM โดยไม่ชนกับ Driver เก่า
-    echo "⚡ Installing PyTorch 2.6.0 (CUDA 12.1), latest Transformers, and vLLM..."
-    pip install --no-cache-dir torch==2.6.0 torchvision==0.21.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu121
-    pip install --no-cache-dir git+https://github.com/huggingface/transformers.git
-    pip install --no-cache-dir vllm --extra-index-url https://download.pytorch.org/whl/cu121
+    # ติดตั้ง PyTorch 2.5.1 (CUDA 12.1), Transformers 4.x Stable, และ vLLM 0.6.x Stable เพื่อความเสถียรบนโมเดล Gemma 3
+    echo "⚡ Installing PyTorch 2.5.1 (CUDA 12.1), Transformers 4.x Stable, and vLLM..."
+    pip install --no-cache-dir torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu121
+    pip install --no-cache-dir "transformers>=4.50.0,<5.0.0" "vllm>=0.6.5,<0.7.0" accelerate pdf2image datasets huggingface_hub hf_transfer Pillow
 fi
 
 echo "📂 Creating directories..."
