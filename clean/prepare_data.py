@@ -248,6 +248,7 @@ def process_dataset(input_dir, output_dir, chunk_size, chunk_overlap, use_llm, l
     cpt_jsonl_file = output_path / "cpt_output.jsonl"
     cpt_txt_file = output_path / "cpt_corpus.txt"
     rag_jsonl_file = output_path / "rag_output.jsonl"
+    sft_json_file = output_path / "sft_multimodal.json"
     
     hf_token = os.environ.get("HF_TOKEN")
     
@@ -390,6 +391,7 @@ def process_dataset(input_dir, output_dir, chunk_size, chunk_overlap, use_llm, l
     
     cpt_entries = []
     rag_entries = []
+    sft_entries = []
     full_corpus_text = []
 
     for page_data in final_pages:
@@ -437,6 +439,22 @@ def process_dataset(input_dir, output_dir, chunk_size, chunk_overlap, use_llm, l
             }
             rag_entries.append(rag_row)
 
+        # 3. จัดรูปแบบสำหรับ Multimodal SFT (LLaMA-Factory VQA format)
+        sft_row = {
+            "images": [image_path],
+            "conversations": [
+                {
+                    "from": "user",
+                    "value": "<image>\nกรุณาถอดข้อความภาษาไทยและวิเคราะห์ดวงชะตา ตารางดาว หรือภาพประกอบจากหน้านี้อย่างละเอียด"
+                },
+                {
+                    "from": "assistant",
+                    "value": f"## เนื้อหาข้อความ:\n{cleaned_text}\n\n## ดวงชะตาและแผนภาพประกอบ:\n{cleaned_caption if cleaned_caption else 'ไม่มีภาพประกอบหรือตารางดาวในหน้านี้'}"
+                }
+            ]
+        }
+        sft_entries.append(sft_row)
+
     # บันทึกไฟล์โลคัลทั้งหมดลงดิสก์
     with open(cpt_jsonl_file, "w", encoding="utf-8") as f:
         for entry in cpt_entries:
@@ -448,6 +466,9 @@ def process_dataset(input_dir, output_dir, chunk_size, chunk_overlap, use_llm, l
     with open(rag_jsonl_file, "w", encoding="utf-8") as f:
         for entry in rag_entries:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+    with open(sft_json_file, "w", encoding="utf-8") as f:
+        json.dump(sft_entries, f, ensure_ascii=False, indent=2)
             
     print("\n🎉 จัดระเบียบและทำความสะอาดข้อมูลเสร็จสมบูรณ์!")
     print(f"📊 สรุปผลลัพธ์:")
@@ -455,6 +476,7 @@ def process_dataset(input_dir, output_dir, chunk_size, chunk_overlap, use_llm, l
     print(f"💾 CPT Output (JSONL) -> {cpt_jsonl_file}")
     print(f"💾 CPT Output (TXT)   -> {cpt_txt_file}")
     print(f"💾 RAG Output (JSONL) -> {rag_jsonl_file} ({len(rag_entries)} Chunks)")
+    print(f"💾 Multimodal SFT (JSON) -> {sft_json_file}")
 
 def main():
     parser = argparse.ArgumentParser(description="สคริปต์ขั้นสูงสำหรับการขัดเกลาคำผิดด้วย LLM และ Regex สำหรับทำ CPT/RAG")
