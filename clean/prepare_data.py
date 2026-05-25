@@ -135,10 +135,10 @@ def init_llm(model_id, gpu_memory_utilization=0.80):
 
 def clean_text_with_llm(text_list):
     """
-    ใช้ LLM ขัดเกลาคำผิด เรียงไวยากรณ์ และตัดขึ้นบรรทัดใหม่ให้สมบูรณ์สำหรับประมวลผลต่อ (แบบ Batch vLLM)
+    ใช้ LLM ขัดเกลาคำผิด เรียงไวยากรณ์ ตัดขึ้นบรรทัดใหม่ และจำแนกหมวดหมู่สำหรับประมวลผลต่อ (แบบ Batch vLLM)
     """
     if not llm or not text_list:
-        return text_list
+        return [{"text": t, "category": "อื่นๆ"} for t in text_list]
         
     from vllm import SamplingParams
     
@@ -149,11 +149,23 @@ def clean_text_with_llm(text_list):
         messages = [
             {"role": "system", "content": (
                 "คุณคือผู้เชี่ยวชาญการจัดชำระคัมภีร์และตำราโหราศาสตร์ไทยโบราณ\n"
-                "หน้าที่ของคุณคือ ล้างข้อมูล แก้ไขคำสะกดผิด และเรียงลำดับเนื้อความที่ได้จากระบบ OCR ให้ถูกต้องตามลำดับการอ่านธรรมชาติและตามหลักไวยากรณ์ไทย\n"
-                "1. เรียงลำดับเนื้อหาใหม่ให้ถูกต้องตามลำดับการอ่านจริง (เช่น กรณีมีคอลัมน์สลับกัน หรือมีเลขข้อที่สลับกันอันเนื่องมาจากข้อบกพร่องของ OCR เช่น ข้อ ๘, ๙, ๑๐ แล้วเป็น ข้อ ๒๑ ให้ใช้บริบทปรับแก้อัตโนมัติเป็น ข้อ ๑๑ เป็นต้น)\n"
-                "2. แก้ไขคำสะกดผิดเพี้ยนอันเนื่องมาจากความผิดพลาดในการสแกน OCR (เช่น ปรับปรุงสระ/วรรณยุกต์ลอย/สลับตำแหน่ง หรือข้อความแยกตัวอักษรผิดเพี้ยน เช่น 'คลงไคล่' ให้เป็น 'คลั่งไคล้')\n"
-                "3. รักษาโครงสร้างเนื้อหา ลบเลขหัวข้อซ้ำซ้อนหรือหน้าสแกนสอดแทรกที่ไม่จำเป็น แต่ห้ามแต่งเติมข้อมูลใหม่ ห้ามดัดแปลงความหมายเดิม และห้ามเขียนข้อความอธิบายใดๆ เพิ่มเติมทั้งสิ้น\n"
-                "4. ส่งกลับเฉพาะเนื้อความคัมภีร์ที่จัดเรียงและปรับแก้ไขแล้วเท่านั้น ห้ามตอบนอกเหนือจากข้อความคัมภีร์โดยเด็ดขาด"
+                "หน้าที่ของคุณคือ:\n"
+                "1. จัดจำแนกหมวดหมู่ของข้อความในหน้านี้ โดยเลือกจากรายการต่อไปนี้เท่านั้น:\n"
+                "   - 'โหราศาสตร์ไทย/ดวงดาว' (ตารางดาว, แผนภาพจักรราศี, คำทำนายดาวจร/ดาวสถิต, ลัคนา)\n"
+                "   - 'ทำนายฝัน' (การตีความฝันต่าง ๆ)\n"
+                "   - 'ไพ่ยิปซี/ทาโรต์' (ความหมายและการวางไพ่ทาโรต์)\n"
+                "   - 'ลายมือ' (เส้นลายมือและการพยากรณ์)\n"
+                "   - 'ความรัก/เนื้อคู่' (การสมพงศ์ดวงชะตาคู่ครอง, ความรัก)\n"
+                "   - 'ฤกษ์ยาม/นพเคราะห์' (การหาเวลาอันเป็นมงคล, พิธีกรรม)\n"
+                "   - 'ความเชื่อ/ไสยศาสตร์' (คาถาอาคม, การบูชาสิ่งศักดิ์สิทธิ์)\n"
+                "   - 'อื่นๆ' (หากไม่ตรงกับหมวดหมู่ใด ๆ)\n"
+                "2. ทำความสะอาด แก้ไขคำสะกดผิด และจัดเรียงข้อความดิบจาก OCR ใหม่ตามลำดับการอ่านธรรมชาติและตามหลักไวยากรณ์ไทย\n"
+                "   - เรียงลำดับเนื้อความใหม่กรณีคอลัมน์สลับหรือข้อความเรียงตัวอักษรผิดเพี้ยน\n"
+                "   - ห้ามแต่งเติมข้อมูลใหม่ ห้ามดัดแปลงความหมายเดิม และห้ามเขียนข้อความอธิบายใดๆ เพิ่มเติม\n\n"
+                "กรุณาตอบกลับในรูปแบบที่กำหนดไว้ด้านล่างนี้อย่างเคร่งครัด ห้ามพิมพ์คำอธิบายอื่นนอกเหนือจากแท็กเหล่านี้:\n"
+                "[หมวดหมู่]: <ชื่อหมวดหมู่ที่เลือก>\n"
+                "[ข้อความสะอาด]:\n"
+                "<ข้อความที่ปรับปรุงเสร็จเรียบร้อยแล้ว>"
             )},
             {"role": "user", "content": f"ข้อความ OCR ดิบ:\n{text}"}
         ]
@@ -166,8 +178,27 @@ def clean_text_with_llm(text_list):
     )
     
     outputs = llm.generate(prompts, sampling_params=sampling_params)
-    cleaned_results = [output.outputs[0].text.strip() for output in outputs]
     
+    import re
+    cleaned_results = []
+    for output in outputs:
+        resp_text = output.outputs[0].text.strip()
+        
+        # ดึงหมวดหมู่
+        category_match = re.search(r"\[หมวดหมู่\]:\s*(.*?)(?:\n|$)", resp_text)
+        category = category_match.group(1).strip() if category_match else "อื่นๆ"
+        category = re.sub(r"['\"`<>\[\]]", "", category)
+        
+        # ดึงข้อความสะอาด
+        text_match = re.search(r"\[ข้อความสะอาด\]:\s*(.*)", resp_text, re.DOTALL)
+        cleaned_text = text_match.group(1).strip() if text_match else resp_text
+        cleaned_text = re.sub(r"^\[ข้อความสะอาด\]:\s*", "", cleaned_text)
+        
+        cleaned_results.append({
+            "text": cleaned_text,
+            "category": category
+        })
+        
     return cleaned_results
 
 def recursive_chunk_text(text, chunk_size=1500, chunk_overlap=200):
@@ -221,7 +252,8 @@ def push_progress_to_hf(cleaned_rows, repo_id, hf_token):
                 "page": row["page"],
                 "image": row["image"],
                 "text": row["text"],
-                "caption": row["caption"]
+                "caption": row["caption"],
+                "category": row.get("category", "อื่นๆ")
             })
             
         features = Features({
@@ -229,7 +261,8 @@ def push_progress_to_hf(cleaned_rows, repo_id, hf_token):
             "page": Value("int32"),
             "image": HFImage(),
             "text": Value("string"),
-            "caption": Value("string")
+            "caption": Value("string"),
+            "category": Value("string")
         })
         
         dataset = Dataset.from_list(all_data, features=features)
@@ -321,7 +354,8 @@ def process_dataset(input_dir, output_dir, chunk_size, chunk_overlap, use_llm, l
                     "page": int(row.get("page", 0)),
                     "image": row.get("image"),
                     "text": row.get("text", "") or "",
-                    "caption": row.get("caption", "") or ""
+                    "caption": row.get("caption", "") or "",
+                    "category": row.get("category", "อื่นๆ")
                 }
         except Exception as e:
             print(f"ℹ️ ยังไม่มี Dataset สะอาดในปลายทาง หรือสร้างครั้งแรก: {e}")
@@ -365,15 +399,17 @@ def process_dataset(input_dir, output_dir, chunk_size, chunk_overlap, use_llm, l
             total_batches = (total_to_clean + batch_size - 1) // batch_size
             print(f"\n🔍 กำลังประมวลผลแบทช์ {batch_num}/{total_batches} (หน้าที่ {i+1}–{min(i + batch_size, total_to_clean)})...")
             
-            # ล้างข้อความเนื้อหา OCR
+            # ล้างข้อความเนื้อหา OCR และจัดแยกหมวดหมู่
             if use_llm:
                 raw_texts = [p["text"] for p in batch]
-                cleaned_texts = clean_text_with_llm(raw_texts)
-                for p, cleaned in zip(batch, cleaned_texts):
-                    p["text"] = cleaned
+                cleaned_data = clean_text_with_llm(raw_texts)
+                for p, item in zip(batch, cleaned_data):
+                    p["text"] = item["text"]
+                    p["category"] = item["category"]
             else:
                 for p in batch:
                     p["text"] = clean_ocr_text(p["text"])
+                    p["category"] = "อื่นๆ"
             
             # ล้างคำบรรยายภาพและคำเกริ่นนำของบอท
             for p in batch:
@@ -407,7 +443,7 @@ def process_dataset(input_dir, output_dir, chunk_size, chunk_overlap, use_llm, l
         image_path = f"output_data/{clean_name}/images/page_{page:03d}.jpg"
         
         # 1. เขียนบันทึกสำหรับ CPT
-        cpt_page_text = f"เอกสาร: {source}\nหน้าที่: {page}\n\nเนื้อหา:\n{cleaned_text}\n"
+        cpt_page_text = f"เอกสาร: {source}\nหน้าที่: {page}\nหมวดหมู่: {page_data.get('category', 'อื่นๆ')}\n\nเนื้อหา:\n{cleaned_text}\n"
         if cleaned_caption:
             cpt_page_text += f"\nรายละเอียดรูปภาพและดวงชะตา:\n{cleaned_caption}\n"
         cpt_page_text += "\n" + "="*40 + "\n\n"
@@ -416,7 +452,7 @@ def process_dataset(input_dir, output_dir, chunk_size, chunk_overlap, use_llm, l
         full_corpus_text.append(cpt_page_text)
         
         # 2. เขียนบันทึกสำหรับ RAG (ผสาน Text + Caption เป็นก้อนเดียวกัน)
-        rag_combined_content = f"# แหล่งที่มา: {source} (หน้าที่ {page})\n\n"
+        rag_combined_content = f"# แหล่งที่มา: {source} (หน้าที่ {page})\n## หมวดหมู่: {page_data.get('category', 'อื่นๆ')}\n\n"
         rag_combined_content += f"## เนื้อหาข้อความ:\n{cleaned_text}\n\n"
         if cleaned_caption:
             rag_combined_content += f"## ดวงชะตาและแผนภาพประกอบ:\n{cleaned_caption}\n"
@@ -429,11 +465,13 @@ def process_dataset(input_dir, output_dir, chunk_size, chunk_overlap, use_llm, l
                 "chunk_id": chunk_id,
                 "source": source,
                 "page": page,
+                "category": page_data.get("category", "อื่นๆ"),
                 "image_path": image_path,
                 "text": chunk_text,
                 "metadata": {
                     "source": source,
                     "page": page,
+                    "category": page_data.get("category", "อื่นๆ"),
                     "chunk_idx": idx,
                     "total_chunks": len(sub_chunks),
                     "image_path": image_path
@@ -451,7 +489,7 @@ def process_dataset(input_dir, output_dir, chunk_size, chunk_overlap, use_llm, l
                 },
                 {
                     "from": "assistant",
-                    "value": f"## เนื้อหาข้อความ:\n{cleaned_text}\n\n## ดวงชะตาและแผนภาพประกอบ:\n{cleaned_caption if cleaned_caption else 'ไม่มีภาพประกอบหรือตารางดาวในหน้านี้'}"
+                    "value": f"## หมวดหมู่:\n{page_data.get('category', 'อื่นๆ')}\n\n## เนื้อหาข้อความ:\n{cleaned_text}\n\n## ดวงชะตาและแผนภาพประกอบ:\n{cleaned_caption if cleaned_caption else 'ไม่มีภาพประกอบหรือตารางดาวในหน้านี้'}"
                 }
             ]
         }
