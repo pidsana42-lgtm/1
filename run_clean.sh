@@ -30,4 +30,4 @@ if [ -z "$HF_TOKEN" ]; then
 fi
 
 echo "🚀 Starting data cleaning pipeline with LLM-assisted reordering..."
-python3 clean/prepare_data.py --use-llm
+python3 clean/prepare_data.py --use-llm "$@"

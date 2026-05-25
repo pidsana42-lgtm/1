@@ -4,6 +4,8 @@ import json
 import sys
 import argparse
 from pathlib import Path
+from PIL import Image as PILImage
+from datasets import Dataset, Features, Value, Image as HFImage, load_dataset
 
 # ตัวแปรโกลบอลสำหรับเก็บโมเดลเมื่อมีการเปิดใช้โหมด LLM
 llm = None
@@ -203,7 +205,39 @@ def recursive_chunk_text(text, chunk_size=1500, chunk_overlap=200):
             
     return chunks
 
-def process_dataset(input_dir, output_dir, chunk_size, chunk_overlap, use_llm, llm_model):
+def push_progress_to_hf(cleaned_rows, repo_id, hf_token):
+    """
+    พุชข้อมูลที่คลีนเสร็จแล้วขึ้น Hugging Face Dataset (Private) เพื่อเซฟประวัติความคืบหน้า
+    """
+    try:
+        print(f"📤 กำลังอัปเดตความคืบหน้าขึ้น Hugging Face: '{repo_id}'...")
+        
+        all_data = []
+        for row in cleaned_rows:
+            all_data.append({
+                "source": row["source"],
+                "page": row["page"],
+                "image": row["image"],
+                "text": row["text"],
+                "caption": row["caption"]
+            })
+            
+        features = Features({
+            "source": Value("string"),
+            "page": Value("int32"),
+            "image": HFImage(),
+            "text": Value("string"),
+            "caption": Value("string")
+        })
+        
+        dataset = Dataset.from_list(all_data, features=features)
+        dataset.push_to_hub(repo_id, token=hf_token, private=True)
+        print(f"✅ อัปเดตความคืบหน้าขึ้น Hugging Face สำเร็จ! (รวม {len(all_data)} หน้า)")
+    except Exception as e:
+        print(f"⚠️ ไม่สามารถพุชขึ้น Hugging Face ได้ชั่วคราว: {e}")
+
+def process_dataset(input_dir, output_dir, chunk_size, chunk_overlap, use_llm, llm_model, 
+                    hf_input_repo, hf_output_repo, batch_size):
     """
     ฟังก์ชันแกนหลักของการรวบรวม ทำความสะอาด และบันทึกผลลัพธ์
     """
@@ -215,71 +249,158 @@ def process_dataset(input_dir, output_dir, chunk_size, chunk_overlap, use_llm, l
     cpt_txt_file = output_path / "cpt_corpus.txt"
     rag_jsonl_file = output_path / "rag_output.jsonl"
     
-    jsonl_files = sorted(input_path.rglob("*.jsonl"))
-    if not jsonl_files:
-        print(f"⚠️ ไม่พบไฟล์ .jsonl ในโฟลเดอร์ '{input_dir}'")
-        return
-        
-    print(f"📦 สแกนข้อมูลดิบทั้งหมด {len(jsonl_files)} ไฟล์...")
+    hf_token = os.environ.get("HF_TOKEN")
     
-    valid_pages = []
-    skipped_pages = 0
-    
-    for jsonl_file in jsonl_files:
-        with open(jsonl_file, "r", encoding="utf-8") as f:
-            for line in f:
-                try:
-                    entry = json.loads(line)
-                    raw_text = entry.get("text", "")
-                    raw_caption = entry.get("caption", "")
-                    
-                    # คัดกรองหน้าขยะออกไปก่อน
-                    if should_skip_page(raw_text, raw_caption):
-                        skipped_pages += 1
-                        continue
+    # 1. โหลดข้อมูลดิบ (ดึงจาก HF ก่อน ถ้าไม่ได้ให้ใช้ข้อมูลโลคัล)
+    raw_pages = []
+    if hf_input_repo and hf_token:
+        try:
+            print(f"📥 กำลังโหลด Dataset ดิบจาก Hugging Face: '{hf_input_repo}'...")
+            dataset = load_dataset(hf_input_repo, split="train", token=hf_token)
+            print(f"✅ โหลดสำเร็จ! พบข้อมูลทั้งหมด {len(dataset)} รายการ")
+            for row in dataset:
+                raw_pages.append({
+                    "source": row.get("source", ""),
+                    "page": int(row.get("page", 0)),
+                    "image": row.get("image"),
+                    "text": row.get("text", "") or "",
+                    "caption": row.get("caption", "") or ""
+                })
+        except Exception as e:
+            print(f"⚠️ ไม่สามารถดึงจาก Hugging Face: {e} จะสลับไปใช้ไฟล์ในเครื่องแทน...")
+            
+    if not raw_pages:
+        # Fallback to local files
+        jsonl_files = sorted(input_path.rglob("*.jsonl"))
+        if not jsonl_files:
+            print(f"❌ ไม่พบข้อมูลดิบทั้งบน Hugging Face และโฟลเดอร์ '{input_dir}'")
+            return
+            
+        print(f"📦 สแกนข้อมูลดิบจากไฟล์โลคัลทั้งหมด {len(jsonl_files)} ไฟล์...")
+        for jsonl_file in jsonl_files:
+            with open(jsonl_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    try:
+                        entry = json.loads(line)
+                        raw_text = entry.get("text", "") or ""
+                        raw_caption = entry.get("caption", "") or ""
                         
-                    valid_pages.append({
-                        "source": entry.get("source", ""),
-                        "page": entry.get("page", 0),
-                        "image_path": entry.get("image_path", ""),
-                        "text": raw_text,
-                        "caption": raw_caption
-                    })
-                except Exception as e:
-                    continue
+                        img_path = entry.get("image_path", "")
+                        img_obj = None
+                        if img_path and os.path.exists(img_path):
+                            img_obj = PILImage.open(img_path).convert("RGB")
+                            
+                        raw_pages.append({
+                            "source": entry.get("source", ""),
+                            "page": int(entry.get("page", 0)),
+                            "image": img_obj,
+                            "text": raw_text,
+                            "caption": raw_caption
+                        })
+                    except Exception as e:
+                        continue
 
-    if not valid_pages:
-        print("❌ ไม่มีหน้าข้อมูลที่มีสาระผ่านเกณฑ์เลยสักหน้า")
+    if not raw_pages:
+        print("❌ ไม่มีหน้าข้อมูลใดๆ ที่สามารถดึงมาประมวลผลได้")
         return
 
-    # เรียงลำดับหน้าเอกสารตามแหล่งที่มาและเลขหน้า เพื่อให้ได้บริบทที่ปะติดปะต่อกัน
-    valid_pages.sort(key=lambda x: (x["source"], x["page"]))
+    # 2. โหลดประวัติความคืบหน้าที่ถูกทำความสะอาดแล้วจาก HF ปลายทาง (เพื่อทำ Auto-Resume)
+    cleaned_dict = {}
+    if hf_output_repo and hf_token:
+        try:
+            print(f"📥 กำลังตรวจสอบความคืบหน้าที่สะอาดแล้วจาก Hugging Face: '{hf_output_repo}'...")
+            cleaned_dataset = load_dataset(hf_output_repo, split="train", token=hf_token)
+            print(f"✅ ดึงประวัติความสำเร็จ! พบหน้าที่สะอาดแล้ว {len(cleaned_dataset)} รายการ")
+            for row in cleaned_dataset:
+                key = (row.get("source", ""), int(row.get("page", 0)))
+                cleaned_dict[key] = {
+                    "source": row.get("source", ""),
+                    "page": int(row.get("page", 0)),
+                    "image": row.get("image"),
+                    "text": row.get("text", "") or "",
+                    "caption": row.get("caption", "") or ""
+                }
+        except Exception as e:
+            print(f"ℹ️ ยังไม่มี Dataset สะอาดในปลายทาง หรือสร้างครั้งแรก: {e}")
 
-    # ล้างข้อความ OCR (เลือกโหมดประมวลผลด้วย LLM หรือ Regex ปกติ)
-    if use_llm:
-        # เริ่มการโหลดและทำความสะอาดข้อความด้วย LLM
-        init_llm(llm_model)
-        raw_texts = [p["text"] for p in valid_pages]
-        cleaned_texts = clean_text_with_llm(raw_texts)
-        for page_data, cleaned in zip(valid_pages, cleaned_texts):
-            page_data["text"] = cleaned
-    else:
-        print("⚙️ รันระบบกรองขยะ Regex พื้นฐานสำหรับเนื้อหา OCR...")
-        for page_data in valid_pages:
-            page_data["text"] = clean_ocr_text(page_data["text"])
+    # 3. คัดกรองหน้าขยะและหน้าที่ประมวลผลเสร็จแล้วออก
+    pages_to_clean = []
+    skipped_trash = 0
+    
+    for p in raw_pages:
+        source = p["source"]
+        page = p["page"]
+        
+        # กรองขยะเบื้องต้น
+        if should_skip_page(p["text"], p["caption"]):
+            skipped_trash += 1
+            continue
+            
+        # ถ้าเคยทำความสะอาดแล้ว ให้ข้ามไปใช้ของเก่าเลย
+        if (source, page) in cleaned_dict:
+            continue
+            
+        pages_to_clean.append(p)
 
+    # จัดเรียงหน้าที่จะคลีนตามแหล่งที่มาและหน้าจริง เพื่อรักษาลำดับการอ่าน
+    pages_to_clean.sort(key=lambda x: (x["source"], x["page"]))
+    
+    total_to_clean = len(pages_to_clean)
+    print(f"\n📊 สรุปรายการประมวลผล:")
+    print(f"  - คัดขยะออก: {skipped_trash} หน้า")
+    print(f"  - ข้ามหน้าที่เสร็จไปแล้ว: {len(cleaned_dict)} หน้า")
+    print(f"  - หน้าที่ต้องคลีนเพิ่ม: {total_to_clean} หน้า")
+
+    # 4. ประมวลผลทีละแบทช์และบันทึกขึ้น HF
+    if total_to_clean > 0:
+        if use_llm:
+            init_llm(llm_model)
+            
+        for i in range(0, total_to_clean, batch_size):
+            batch = pages_to_clean[i:i + batch_size]
+            batch_num = i // batch_size + 1
+            total_batches = (total_to_clean + batch_size - 1) // batch_size
+            print(f"\n🔍 กำลังประมวลผลแบทช์ {batch_num}/{total_batches} (หน้าที่ {i+1}–{min(i + batch_size, total_to_clean)})...")
+            
+            # ล้างข้อความเนื้อหา OCR
+            if use_llm:
+                raw_texts = [p["text"] for p in batch]
+                cleaned_texts = clean_text_with_llm(raw_texts)
+                for p, cleaned in zip(batch, cleaned_texts):
+                    p["text"] = cleaned
+            else:
+                for p in batch:
+                    p["text"] = clean_ocr_text(p["text"])
+            
+            # ล้างคำบรรยายภาพและคำเกริ่นนำของบอท
+            for p in batch:
+                p["caption"] = clean_conversational_noise(clean_ocr_text(p["caption"]))
+                
+            # เพิ่มผลลัพธ์เข้าดิกชันนารีเก็บความสำเร็จ
+            for p in batch:
+                key = (p["source"], p["page"])
+                cleaned_dict[key] = p
+                
+            # พุชประวัติขึ้น Hugging Face หลังจบแบทช์
+            if hf_output_repo and hf_token:
+                push_progress_to_hf(cleaned_dict.values(), hf_output_repo, hf_token)
+
+    # 5. สรุปและเขียนบันทึกไฟล์โลคัล (จากข้อมูลสะอาดครบทุกหน้าเรียงลำดับเสร็จสมบูรณ์)
+    final_pages = sorted(cleaned_dict.values(), key=lambda x: (x["source"], x["page"]))
+    
     cpt_entries = []
     rag_entries = []
     full_corpus_text = []
 
-    # ดำเนินการสรุปผลและแปลงฟอร์แมต
-    for page_data in valid_pages:
+    for page_data in final_pages:
         source = page_data["source"]
         page = page_data["page"]
-        image_path = page_data["image_path"]
         cleaned_text = page_data["text"]
-        # คำบรรยายภาพที่ได้จาก Gemma4 สะอาดอยู่แล้ว ให้ล้างแค่คำเกริ่นนำ AI
-        cleaned_caption = clean_conversational_noise(clean_ocr_text(page_data["caption"]))
+        cleaned_caption = page_data["caption"]
+        
+        # ปรับ path ชั่วคราวสำหรับอ้างอิงรูปโลคัล
+        clean_name = Path(source).stem.replace(" ", "_")
+        image_path = f"output_data/{clean_name}/images/page_{page:03d}.jpg"
         
         # 1. เขียนบันทึกสำหรับ CPT
         cpt_page_text = f"เอกสาร: {source}\nหน้าที่: {page}\n\nเนื้อหา:\n{cleaned_text}\n"
@@ -316,7 +437,7 @@ def process_dataset(input_dir, output_dir, chunk_size, chunk_overlap, use_llm, l
             }
             rag_entries.append(rag_row)
 
-    # บันทึกไฟล์ทั้งหมดลงดิสก์
+    # บันทึกไฟล์โลคัลทั้งหมดลงดิสก์
     with open(cpt_jsonl_file, "w", encoding="utf-8") as f:
         for entry in cpt_entries:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
@@ -330,7 +451,6 @@ def process_dataset(input_dir, output_dir, chunk_size, chunk_overlap, use_llm, l
             
     print("\n🎉 จัดระเบียบและทำความสะอาดข้อมูลเสร็จสมบูรณ์!")
     print(f"📊 สรุปผลลัพธ์:")
-    print(f"  - คัดกรองหน้าขยะออก: {skipped_pages} หน้า")
     print(f"  - คงเหลือหน้าคุณภาพดี: {len(cpt_entries)} หน้า")
     print(f"💾 CPT Output (JSONL) -> {cpt_jsonl_file}")
     print(f"💾 CPT Output (TXT)   -> {cpt_txt_file}")
@@ -338,21 +458,27 @@ def process_dataset(input_dir, output_dir, chunk_size, chunk_overlap, use_llm, l
 
 def main():
     parser = argparse.ArgumentParser(description="สคริปต์ขั้นสูงสำหรับการขัดเกลาคำผิดด้วย LLM และ Regex สำหรับทำ CPT/RAG")
-    parser.add_argument("--input-dir", type=str, default="output_data", help="โฟลเดอร์ข้อมูลดิบ .jsonl")
-    parser.add_argument("--output-dir", type=str, default="clean", help="โฟลเดอร์เซฟผลลัพธ์")
+    parser.add_argument("--input-dir", type=str, default="output_data", help="โฟลเดอร์ข้อมูลดิบ .jsonl (ใช้ในกรณีออฟไลน์)")
+    parser.add_argument("--output-dir", type=str, default="clean", help="โฟลเดอร์เซฟผลลัพธ์โลคัล")
     parser.add_argument("--chunk-size", type=int, default=1500, help="ขนาดตัวอักษรสูงสุดต่อ 1 Chunk")
     parser.add_argument("--chunk-overlap", type=int, default=200, help="ความกว้างของข้อความทับซ้อนกันระหว่าง Chunk")
     parser.add_argument("--use-llm", action="store_true", help="เปิดใช้งานโหมดใช้ LLM (vLLM) ช่วยเรียงประโยคและคำสะกดผิด")
     parser.add_argument("--llm-model", type=str, default="google/gemma-4-E4B-it", help="โมเดลที่จะใช้แก้อักษรไทย (ค่าเริ่มต้น gemma-4-E4B-it เพื่อประหยัด VRAM)")
+    parser.add_argument("--hf-input-repo", type=str, default="Phonsiri/astrology-dataset", help="ชื่อ repository ข้อมูลดิบบน Hugging Face")
+    parser.add_argument("--hf-output-repo", type=str, default="Phonsiri/astrology-dataset-clean", help="ชื่อ repository ผลลัพธ์สะอาดบน Hugging Face")
+    parser.add_argument("--batch-size", type=int, default=8, help="จำนวนหน้าที่ประมวลผลและพุชขึ้น HF ต่อ 1 แบทช์")
     
     args = parser.parse_args()
     process_dataset(
-        args.input_dir, 
-        args.output_dir, 
-        args.chunk_size, 
-        args.chunk_overlap, 
-        args.use_llm, 
-        args.llm_model
+        input_dir=args.input_dir, 
+        output_dir=args.output_dir, 
+        chunk_size=args.chunk_size, 
+        chunk_overlap=args.chunk_overlap, 
+        use_llm=args.use_llm, 
+        llm_model=args.llm_model,
+        hf_input_repo=args.hf_input_repo,
+        hf_output_repo=args.hf_output_repo,
+        batch_size=args.batch_size
     )
 
 if __name__ == "__main__":
