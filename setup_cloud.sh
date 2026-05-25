@@ -47,7 +47,7 @@ else
         if [ "$MAJOR" -eq 12 ] && [ "$MINOR" -lt 4 ]; then
             WHL_CUDA="cu121"
         elif [ "$MAJOR" -lt 12 ]; then
-            WHL_CUDA="cu121"
+            WHL_CUDA="cu118"
         fi
     else
         echo "⚠️ Warning: ไม่พบ nvidia-smi หรือไม่สามารถเข้าถึงไดรเวอร์ได้ จะข้ามการตรวจจับและใช้ค่าเริ่มต้น (CUDA 12.4)"
@@ -57,7 +57,10 @@ else
     
     # ติดตั้ง PyTorch และ vLLM เวอร์ชันเสถียรที่เข้ากันได้กับ Driver
     echo "⚡ Installing compatible vLLM and PyTorch..."
-    if [ "$WHL_CUDA" = "cu121" ]; then
+    if [ "$WHL_CUDA" = "cu118" ]; then
+        python3 -m pip install -U torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+        python3 -m pip install -U vllm --extra-index-url https://download.pytorch.org/whl/cu118
+    elif [ "$WHL_CUDA" = "cu121" ]; then
         python3 -m pip install -U torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
         python3 -m pip install -U vllm --extra-index-url https://download.pytorch.org/whl/cu121
     else
