@@ -111,7 +111,7 @@ def should_skip_page(text, caption):
             
     return False
 
-def init_llm(model_id):
+def init_llm(model_id, gpu_memory_utilization=0.80):
     """
     โหลดโมเดลผ่าน vLLM เพื่อใช้ประมวลผลข้อความภาษาไทย
     """
@@ -128,7 +128,7 @@ def init_llm(model_id):
         model=model_id,
         max_model_len=4096,
         trust_remote_code=True,
-        gpu_memory_utilization=0.30,  # ใช้หน่วยความจำจำกัดเพื่อแชร์พื้นที่กับการทำ inference ทั่วไป
+        gpu_memory_utilization=gpu_memory_utilization,
     )
     processor = AutoProcessor.from_pretrained(model_id)
     print("✅ โหลดโมเดล LLM สำหรับเรียงข้อความเสร็จสิ้น!")
@@ -237,7 +237,7 @@ def push_progress_to_hf(cleaned_rows, repo_id, hf_token):
         print(f"⚠️ ไม่สามารถพุชขึ้น Hugging Face ได้ชั่วคราว: {e}")
 
 def process_dataset(input_dir, output_dir, chunk_size, chunk_overlap, use_llm, llm_model, 
-                    hf_input_repo, hf_output_repo, batch_size):
+                    hf_input_repo, hf_output_repo, batch_size, gpu_memory_utilization):
     """
     ฟังก์ชันแกนหลักของการรวบรวม ทำความสะอาด และบันทึกผลลัพธ์
     """
@@ -354,7 +354,7 @@ def process_dataset(input_dir, output_dir, chunk_size, chunk_overlap, use_llm, l
     # 4. ประมวลผลทีละแบทช์และบันทึกขึ้น HF
     if total_to_clean > 0:
         if use_llm:
-            init_llm(llm_model)
+            init_llm(llm_model, gpu_memory_utilization)
             
         for i in range(0, total_to_clean, batch_size):
             batch = pages_to_clean[i:i + batch_size]
@@ -467,6 +467,7 @@ def main():
     parser.add_argument("--hf-input-repo", type=str, default="Phonsiri/astrology-dataset", help="ชื่อ repository ข้อมูลดิบบน Hugging Face")
     parser.add_argument("--hf-output-repo", type=str, default="Phonsiri/astrology-dataset-clean", help="ชื่อ repository ผลลัพธ์สะอาดบน Hugging Face")
     parser.add_argument("--batch-size", type=int, default=8, help="จำนวนหน้าที่ประมวลผลและพุชขึ้น HF ต่อ 1 แบทช์")
+    parser.add_argument("--gpu-memory-utilization", type=float, default=0.80, help="สัดส่วนการจอง VRAM ของ GPU สำหรับ vLLM (เช่น 0.80 สำหรับใช้ 80%)")
     
     args = parser.parse_args()
     process_dataset(
@@ -478,7 +479,8 @@ def main():
         llm_model=args.llm_model,
         hf_input_repo=args.hf_input_repo,
         hf_output_repo=args.hf_output_repo,
-        batch_size=args.batch_size
+        batch_size=args.batch_size,
+        gpu_memory_utilization=args.gpu_memory_utilization
     )
 
 if __name__ == "__main__":
