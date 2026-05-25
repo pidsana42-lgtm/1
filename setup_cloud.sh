@@ -32,9 +32,9 @@ else
         if v:
             print(v)
         else:
-            print('12.4')
+            print('12.1')
     except Exception as e:
-        print('12.4')
+        print('12.1')
     " 2>/dev/null)
 
     echo "🔍 Detected CUDA version from PyTorch: $CUDA_VERSION"
@@ -42,13 +42,22 @@ else
     # ติดตั้งแพ็กเกจพื้นฐาน (รวมถึง nvidia-cuda-runtime-cu12 เพื่อให้ไลบรารี libcudart.so.12 พร้อมใช้งานเสมอ)
     python3 -m pip install "numpy<2.0.0" transformers accelerate pdf2image datasets huggingface_hub hf_transfer Pillow torchvision nvidia-cuda-runtime-cu12
 
-    # ติดตั้ง vLLM Nightly ให้ตรงกับเวอร์ชัน CUDA
-    if [[ "$CUDA_VERSION" == 13* ]]; then
-        echo "⚡ Installing vLLM for CUDA 13.0..."
-        python3 -m pip install -U vllm --pre --extra-index-url https://wheels.vllm.ai/nightly/cu130 --extra-index-url https://download.pytorch.org/whl/cu130 || python3 -m pip install -U vllm --pre
+    # พยายามติดตั้ง vLLM เวอร์ชันปกติที่เข้ากันได้กับระบบก่อนเพื่อหลีกเลี่ยงปัญหา Driver เก่า
+    echo "⚡ Installing stable vLLM..."
+    if python3 -m pip install vllm; then
+        echo "✅ Installed stable vLLM successfully!"
     else
-        echo "⚡ Installing vLLM for CUDA 12.9..."
-        python3 -m pip install -U vllm --pre --extra-index-url https://wheels.vllm.ai/nightly/cu129 --extra-index-url https://download.pytorch.org/whl/cu129 || python3 -m pip install -U vllm --pre
+        echo "⚠️ Stable vLLM install failed, trying version-specific fallback..."
+        if [[ "$CUDA_VERSION" == 12.4* ]]; then
+            echo "⚡ Installing vLLM for CUDA 12.4..."
+            python3 -m pip install vllm --extra-index-url https://download.pytorch.org/whl/cu124
+        elif [[ "$CUDA_VERSION" == 12.1* ]]; then
+            echo "⚡ Installing vLLM for CUDA 12.1..."
+            python3 -m pip install vllm --extra-index-url https://download.pytorch.org/whl/cu121
+        else
+            echo "⚡ Installing default vLLM..."
+            python3 -m pip install vllm
+        fi
     fi
 fi
 
