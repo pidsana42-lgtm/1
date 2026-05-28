@@ -75,6 +75,7 @@ def generate_qa_with_llm(chunk_list):
                 "   - **GPT (Assistant)**:\n"
                 "     * `thought_before_tool`: วิเคราะห์เจตนาของลูกค้า หาประเด็นและตัดสินใจว่าจะเรียกเครื่องมือด้วยคีย์เวิร์ดภาษาไทยอะไร เช่น `[\"เกณฑ์การงาน\", \"ดาวพฤหัสบดี\"]` หรือ `[\"วิธีแก้เคล็ด\", \"ดวงตก\"]` เพื่อสืบค้นคัมภีร์\n"
                 "     * `tool_call`: เรียกใช้เครื่องมือ `search_astrology_manual` พร้อมระบุอาร์กิวเมนต์เป็นคีย์เวิร์ด\n"
+                "     * `tool_call`: เรียกใช้เครื่องมือ `search_astrology_manual` พร้อมระบุอาร์กิวเมนต์เป็นคีย์เวิร์ด\n"
                 "     * `tool_response`: ผลลัพธ์จากการรันเครื่องมือ (ให้คัดลอกส่วนสำคัญหรือสรุปเนื้อหาจากข้อความคัมภีร์ที่กำหนดให้ด้านล่างนี้ มาจำลองเป็นผลลัพธ์ของเครื่องมือ)\n"
                 "     * `thought_after_tool`: วิเคราะห์ข้อความในคัมภีร์ที่ได้รับจากเครื่องมือเทียบกับสถานการณ์ของลูกค้า ภายใต้กรอบคิดวิเคราะห์ <think>...</think>\n"
                 "     * `response_text`: พยากรณ์ผลลัพธ์ภาพรวมอย่างอบอุ่น ชวนคุยโต้ตอบเป็นกันเอง และเอ่ยปากถามเพื่อสร้างปฏิสัมพันธ์โต้ตอบในรอบที่ 2\n"
@@ -173,7 +174,7 @@ def generate_qa_with_llm(chunk_list):
                     "keywords": ["ทำนายดวง", "วิเคราะห์ดวง"]
                 }
             }
-            fallback_r1_tool_response = text_content[:600]
+            fallback_r1_tool_response = text_content[:600] if len(text_content) > 600 else text_content
             fallback_r1_thought_after = f"<think>\nวิเคราะห์เนื้อหาคัมภีร์หน้า {chunk.get('page', 0)} เพื่อตอบลูกค้า\n</think>"
             fallback_r1_content = f"สวัสดีครับ จากการเปิดค้นตำราหมอพบข้อมูลว่า... (โปรดสอบถามวันเดือนปีเกิดเพิ่มเติมเพื่อวิเคราะห์ดวงเจาะลึกครับ)"
             
@@ -244,7 +245,7 @@ def push_sft_progress_to_hf(qa_rows, repo_id, hf_token):
     except Exception as e:
         print(f"⚠️ ไม่สามารถพุชขึ้น Hugging Face ได้ชั่วคราว: {e}")
 
-def process_qa_generation(input_file, output_dir, use_llm, llm_model, 
+def process_qa_generation(input_file, input_repo, output_dir, use_llm, llm_model, 
                           hf_output_repo, batch_size, gpu_memory_utilization):
     """
     ฟังก์ชันแกนหลักของการสร้างชุดข้อมูล SFT
@@ -255,24 +256,39 @@ def process_qa_generation(input_file, output_dir, use_llm, llm_model,
     
     sft_local_file = output_path / "sft_qa_thinking.json"
     
-    # 1. โหลดข้อมูล RAG chunks ที่สะสางแล้ว
+    # 1. โหลดข้อมูล RAG chunks (จากไฟล์ หรือดาวน์โหลดตรงจาก Hugging Face)
     chunks = []
-    if not input_path.exists():
-        print(f"❌ ไม่พบไฟล์ขยะที่คลีนแล้วที่ '{input_file}'! กรุณารันเตรียมข้อมูลด้วย prepare_data.py ก่อน")
-        return
-        
-    print(f"📖 กำลังโหลด RAG Chunks จาก '{input_file}'...")
-    with open(input_path, "r", encoding="utf-8") as f:
-        for line in f:
-            try:
-                chunks.append(json.loads(line))
-            except:
-                continue
-                
-    print(f"✅ โหลดสำเร็จ! พบข้อมูลทั้งหมด {len(chunks)} Chunks")
+    hf_token = os.environ.get("HF_TOKEN")
+    
+    if not input_path.exists() and input_repo:
+        if not hf_token:
+            print(f"❌ Error: ไม่พบไฟล์ในเครื่อง '{input_file}' และไม่ได้ระบุ HF_TOKEN ใน Environment เพื่อดึงข้อมูลจาก Hugging Face")
+            return
+        try:
+            print(f"📥 ไม่พบไฟล์ในเครื่อง กำลังดึง RAG Chunks จาก Hugging Face Repo: '{input_repo}'...")
+            hf_dataset = load_dataset(input_repo, split="train", token=hf_token)
+            for row in hf_dataset:
+                chunks.append({
+                    "chunk_id": row.get("chunk_id", ""),
+                    "source": row.get("source", ""),
+                    "page": int(row.get("page", 0)),
+                    "text": row.get("text", "")
+                })
+            print(f"✅ โหลดจาก Hugging Face สำเร็จ! พบข้อมูลทั้งหมด {len(chunks)} Chunks")
+        except Exception as e:
+            print(f"❌ ไม่สามารถโหลดข้อมูล RAG Chunks จาก Hugging Face ได้: {e}")
+            return
+    else:
+        print(f"📖 กำลังโหลด RAG Chunks จากไฟล์ในเครื่อง '{input_file}'...")
+        with open(input_path, "r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    chunks.append(json.loads(line))
+                except:
+                    continue
+        print(f"✅ โหลดสำเร็จ! พบข้อมูลทั้งหมด {len(chunks)} Chunks")
     
     # 2. ตรวจเช็กความคืบหน้าที่เคยสร้าง SFT ไว้แล้วจาก HF เพื่อทำ Auto-Resume
-    hf_token = os.environ.get("HF_TOKEN")
     generated_dict = {}
     
     if hf_output_repo and hf_token:
@@ -456,7 +472,8 @@ def process_qa_generation(input_file, output_dir, use_llm, llm_model,
 
 def main():
     parser = argparse.ArgumentParser(description="สคริปต์สังเคราะห์คู่คำถาม-คำตอบเชิงลึกแบบมีคิดวิเคราะห์ <think> เพื่อทำ SFT")
-    parser.add_argument("--input-file", type=str, default="clean/rag_output.jsonl", help="ตำแหน่งไฟล์ RAG chunks ที่ล้างแล้ว")
+    parser.add_argument("--input-file", type=str, default="clean/rag_output.jsonl", help="ตำแหน่งไฟล์ RAG chunks ที่ล้างแล้วในเครื่อง")
+    parser.add_argument("--input-repo", type=str, default="Phonsiri/astrology-dataset-clean", help="ชื่อ repository ข้อมูล RAG chunks สะอาดบน Hugging Face สำหรับดึงเมื่อไม่มีไฟล์ในเครื่อง")
     parser.add_argument("--output-dir", type=str, default="clean", help="ตำแหน่งไดเรกทอรีเก็บเอาต์พุต SFT")
     parser.add_argument("--llm-model", type=str, default="google/gemma-4-26B-A4B-it", help="โมเดลที่จะใช้แกะเนื้อหาเพื่อถามตอบ")
     parser.add_argument("--hf-output-repo", type=str, default="Phonsiri/astrology-sft-thinking", help="ชื่อ repository ผลลัพธ์ SFT บน Hugging Face")
@@ -466,6 +483,7 @@ def main():
     args = parser.parse_args()
     process_qa_generation(
         input_file=args.input_file,
+        input_repo=args.input_repo,
         output_dir=args.output_dir,
         use_llm=True,
         llm_model=args.llm_model,
