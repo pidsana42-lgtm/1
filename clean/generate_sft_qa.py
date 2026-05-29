@@ -259,31 +259,106 @@ def process_qa_generation(input_file, input_repo, output_dir, use_llm, llm_model
     # 1. โหลดข้อมูล RAG chunks (จากไฟล์ หรือดาวน์โหลดตรงจาก Hugging Face)
     chunks = []
     hf_token = os.environ.get("HF_TOKEN")
+    if not hf_token:
+        # ลองค้นหา token จาก cache ของ Hugging Face ในเครื่อง
+        for p in [Path.home() / ".cache" / "huggingface" / "token", Path.home() / ".huggingface" / "token"]:
+            if p.exists():
+                try:
+                    hf_token = p.read_text().strip()
+                    break
+                except:
+                    pass
     
     if not input_path.exists() and input_repo:
         if not hf_token:
-            print(f"❌ Error: ไม่พบไฟล์ในเครื่อง '{input_file}' และไม่ได้ระบุ HF_TOKEN ใน Environment เพื่อดึงข้อมูลจาก Hugging Face")
+            print(f"❌ Error: ไม่พบไฟล์ในเครื่อง '{input_file}' และไม่ได้ระบุ HF_TOKEN เพื่อดึงข้อมูลจาก Hugging Face")
             return
         try:
-            print(f"📥 ไม่พบไฟล์ในเครื่อง กำลังดึง RAG Chunks จาก Hugging Face Repo: '{input_repo}'...")
+            print(f"📥 ไม่พบไฟล์ในเครื่อง กำลังดึงข้อมูลจาก Hugging Face Repo: '{input_repo}'...")
             hf_dataset = load_dataset(input_repo, split="train", token=hf_token)
-            for row in hf_dataset:
-                chunks.append({
-                    "chunk_id": row.get("chunk_id", ""),
-                    "source": row.get("source", ""),
-                    "page": int(row.get("page", 0)),
-                    "text": row.get("text", "")
-                })
-            print(f"✅ โหลดจาก Hugging Face สำเร็จ! พบข้อมูลทั้งหมด {len(chunks)} Chunks")
+            
+            # ตรวจสอบว่าใน Dataset มีคอลัมน์ chunk_id หรือไม่
+            has_chunk_id = "chunk_id" in hf_dataset.column_names
+            
+            if has_chunk_id:
+                print("✅ พบคอลัมน์ chunk_id ใน Dataset บน Hugging Face")
+                for row in hf_dataset:
+                    chunks.append({
+                        "chunk_id": row.get("chunk_id", ""),
+                        "source": row.get("source", ""),
+                        "page": int(row.get("page", 0)),
+                        "text": row.get("text", "")
+                    })
+            else:
+                print("ℹ️ ไม่พบคอลัมน์ chunk_id ใน Dataset ต้นทาง, กำลังทำ Dynamic Chunking ในหน่วยความจำ...")
+                # ฟังก์ชันหั่น Chunk เหมือนใน prepare_data.py
+                def recursive_chunk_text(text, chunk_size=1500, chunk_overlap=200):
+                    if len(text) <= chunk_size:
+                        return [text]
+                    sub_chunks = []
+                    start = 0
+                    text_len = len(text)
+                    while start < text_len:
+                        end = min(start + chunk_size, text_len)
+                        if end < text_len:
+                            paragraph_boundary = text.rfind("\n\n", start, end)
+                            if paragraph_boundary != -1 and paragraph_boundary > start + (chunk_size // 2):
+                                end = paragraph_boundary + 2
+                            else:
+                                line_boundary = text.rfind("\n", start, end)
+                                if line_boundary != -1 and line_boundary > start + (chunk_size // 2):
+                                    end = line_boundary + 1
+                                else:
+                                    word_boundary = text.rfind(" ", start, end)
+                                    if word_boundary != -1 and word_boundary > start + (chunk_size // 2):
+                                        end = word_boundary + 1
+                        chunk_content = text[start:end].strip()
+                        if chunk_content:
+                            sub_chunks.append(chunk_content)
+                        start = end - chunk_overlap if end < text_len else end
+                        if start >= text_len or end == text_len:
+                            break
+                    return sub_chunks
+
+                for row in hf_dataset:
+                    source = row.get("source", "")
+                    page = int(row.get("page", 0))
+                    cleaned_text = row.get("text", "") or ""
+                    cleaned_caption = row.get("caption", "") or ""
+                    category = row.get("category", "อื่นๆ")
+                    
+                    # ผสานเนื้อหาเพื่อทำ RAG Chunk
+                    rag_combined_content = f"# แหล่งที่มา: {source} (หน้าที่ {page})\n## หมวดหมู่: {category}\n\n"
+                    rag_combined_content += f"## เนื้อหาข้อความ:\n{cleaned_text}\n\n"
+                    if cleaned_caption:
+                        rag_combined_content += f"## ดวงชะตาและแผนภาพประกอบ:\n{cleaned_caption}\n"
+                    
+                    # หั่น Chunk ขนาด 1500 อักษร ทับซ้อน 200 อักษร
+                    sub_chunks = recursive_chunk_text(rag_combined_content, chunk_size=1500, chunk_overlap=200)
+                    for idx, chunk_text in enumerate(sub_chunks):
+                        chunk_id = f"{Path(source).stem}_p{page:03d}_c{idx:02d}"
+                        chunks.append({
+                            "chunk_id": chunk_id,
+                            "source": source,
+                            "page": page,
+                            "text": chunk_text
+                        })
+            print(f"✅ ประมวลผลเป็น RAG Chunks สำเร็จ! พบทั้งหมด {len(chunks)} Chunks")
         except Exception as e:
-            print(f"❌ ไม่สามารถโหลดข้อมูล RAG Chunks จาก Hugging Face ได้: {e}")
+            print(f"❌ ไม่สามารถโหลดข้อมูลจาก Hugging Face ได้: {e}")
             return
     else:
         print(f"📖 กำลังโหลด RAG Chunks จากไฟล์ในเครื่อง '{input_file}'...")
         with open(input_path, "r", encoding="utf-8") as f:
-            for line in f:
+            for line_idx, line in enumerate(f):
                 try:
-                    chunks.append(json.loads(line))
+                    data = json.loads(line)
+                    # เพิ่มความปลอดภัยกรณีไม่มี chunk_id ในไฟล์โลคัล
+                    if "chunk_id" not in data or not data["chunk_id"]:
+                        source = data.get("source", "unknown")
+                        page = int(data.get("page", 0))
+                        data["chunk_id"] = f"{Path(source).stem}_p{page:03d}_local_{line_idx:03d}"
+                    chunks.append(data)
                 except:
                     continue
         print(f"✅ โหลดสำเร็จ! พบข้อมูลทั้งหมด {len(chunks)} Chunks")
